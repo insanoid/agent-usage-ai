@@ -1,11 +1,18 @@
 # Builds an ad-hoc signed AgentUsage.app (no widget: that needs a signing
 # team) and publishes it as a GitHub Release when a v* tag is pushed. A
-# manual run only uploads the zip as a build artifact.
+# manual run, or a pull request that touches packaging, only uploads the zip
+# as a build artifact.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/**
+      - project.yml
+      - Package.swift
   workflow_dispatch:
 
 permissions:
