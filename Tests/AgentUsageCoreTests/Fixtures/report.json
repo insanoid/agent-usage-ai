@@ -1,0 +1,13 @@
+{"version": 1, "generated_at": "2026-10-16T13:58:35Z", "accounts": [
+ {"slot": "work", "label": "🔵 work",
+  "claude": {"limits": [
+    {"kind": "session", "label": "5-hour", "scope": null, "percent": 1.0, "severity": "normal", "resets_at": "2026-10-16T14:19:59Z"},
+    {"kind": "weekly_all", "label": "Weekly", "scope": null, "percent": 91.0, "severity": "critical", "resets_at": "2026-10-20T04:59:59Z"},
+    {"kind": "weekly_scoped", "label": "Fable weekly", "scope": "Fable", "percent": 100.0, "severity": "critical", "resets_at": "2026-10-20T04:59:59Z"}],
+   "spend": {"used": 405.06, "limit": 600.0, "currency": "USD", "percent": 68, "enabled": true, "disabled_reason": null},
+   "breakdown": []},
+  "codex": {"limits": [{"kind": "weekly_all", "label": "Weekly", "scope": null, "percent": 14.0, "severity": null, "resets_at": "2026-10-22T06:14:13Z"}],
+   "plan": "Business", "plan_detail": "Pro Lite", "reset_credits": 0}},
+ {"slot": "personal", "label": "🟢 personal",
+  "claude": {"note": "token stale — run: cc personal"},
+  "codex": null}]}

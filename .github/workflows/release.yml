@@ -1,0 +1,55 @@
+# Builds an ad-hoc signed AgentUsage.app (no widget: that needs a signing
+# team) and publishes it as a GitHub Release when a v* tag is pushed. A
+# manual run, or a pull request that touches packaging, only uploads the zip
+# as a build artifact.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/**
+      - project.yml
+      - Package.swift
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test
+        run: swift test
+
+      - name: Package
+        env:
+          AGENT_USAGE_TEAM: ""
+          AGENT_USAGE_BUNDLE_PREFIX: com.karthikeyaudupa
+        run: ./scripts/package.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentUsage
+          path: dist/*
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Agent Usage $GITHUB_REF_NAME" \
+            --notes "Ad-hoc signed build, without the widget. First launch: right-click the app, or System Settings > Privacy & Security > Open Anyway. Needs Apple's command line tools for Python (xcode-select --install). See the README."

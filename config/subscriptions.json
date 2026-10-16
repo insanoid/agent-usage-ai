@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "subscriptions": [
+    { "name": "Work", "provider": "claude", "dir": "~/.claude-work" },
+    { "name": "Personal", "provider": "claude", "dir": "~/.claude" },
+    { "name": "Work", "provider": "codex", "dir": "~/.codex-work" },
+    { "name": "Personal", "provider": "codex", "dir": "~/.codex" }
+  ]
+}

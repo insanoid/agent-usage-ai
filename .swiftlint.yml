@@ -1,0 +1,7 @@
+# SwiftFormat owns formatting and keeps trailing commas in multi-line literals.
+disabled_rules:
+  - trailing_comma
+
+identifier_name:
+  # Spacing tokens use the usual t-shirt sizes.
+  excluded: [id, xs, sm, md, lg, xl]
