@@ -1,0 +1,42 @@
+# Unit tests on every push to main and every pull request: the usage script
+# on Linux (cheap; covers the oldest Python the app may run with), and the
+# Swift package plus lint on macOS.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  script:
+    name: Script (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.9 is /usr/bin/python3 on macOS, which the app runs the script with.
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - run: pytest Tests/ScriptTests -q
+
+  swift:
+    name: Swift
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install linters
+        run: brew install swiftformat swiftlint
+      - name: Lint
+        run: |
+          swiftformat Sources Tests App Package.swift --lint
+          swiftlint lint --strict Sources Tests App
+      - name: Test
+        run: swift test

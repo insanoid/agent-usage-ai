@@ -3,3 +3,6 @@ build/
 .swiftpm/
 *.xcodeproj/
 dist/
+scripts/local.env
+__pycache__/
+.pytest_cache/

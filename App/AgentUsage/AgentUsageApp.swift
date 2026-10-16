@@ -9,6 +9,7 @@ struct AgentUsageApp: App {
     @State private var subscriptions: SubscriptionsModel
 
     init() {
+        LoginItem.refreshIfEnabled()
         let store = UsageStore(
             source: ScriptUsageSource(configURL: SubscriptionsFile.standard().url),
             cached: WidgetBridge.loadCached(),

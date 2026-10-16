@@ -18,6 +18,7 @@ let package = Package(
             exclude: ["Resources/ATTRIBUTION.md"],
             resources: [.copy("Resources/Logos")]
         ),
+        .testTarget(name: "AgentUsageUITests", dependencies: ["AgentUsageUI", "AgentUsageCore"]),
         .testTarget(
             name: "AgentUsageCoreTests",
             dependencies: ["AgentUsageCore"],
