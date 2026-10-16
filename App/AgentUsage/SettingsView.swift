@@ -46,6 +46,8 @@ struct SettingsContent: View {
                 Hairline()
                 ExtraUsageAlertRow()
                 Hairline()
+                FreeResetsRow(store: store)
+                Hairline()
                 HStack(alignment: .center, spacing: Spacing.md) {
                     VStack(alignment: .leading, spacing: Spacing.xxs) {
                         Text("Quit Agent Usage")

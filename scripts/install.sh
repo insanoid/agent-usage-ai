@@ -12,19 +12,6 @@ cd "$(dirname "$0")/.."
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-# The team ID of the first "Apple Development" certificate in the keychain:
-# the certificate's organizational unit. Empty when there is none.
-team_from_keychain() {
-  local hash
-  hash=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')
-  [[ -n "$hash" ]] || return 0
-  security find-certificate -a -Z -p 2>/dev/null \
-    | awk -v h="$hash" '/SHA-1 hash:/ {p = ($3 == h)} p' \
-    | sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' \
-    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null \
-    | awk -F' = ' '/organizationalUnitName/ {print $2; exit}'
-}
-
 say "Checking tools"
 xcodebuild -version >/dev/null 2>&1 \
   || fail "Xcode is required (the full app, not only the Command Line Tools). Install it from the App Store, open it once, then run: sudo xcode-select -s /Applications/Xcode.app"
@@ -40,9 +27,8 @@ if ! command -v xcodegen >/dev/null; then
 fi
 
 say "Working out code signing"
-if [[ -z "${AGENT_USAGE_TEAM+set}" ]]; then
-  AGENT_USAGE_TEAM=$(team_from_keychain)
-fi
+# shellcheck source=scripts/signing.sh
+source scripts/signing.sh
 if [[ -n "$AGENT_USAGE_TEAM" ]]; then
   echo "    signing team: $AGENT_USAGE_TEAM"
 else
@@ -52,16 +38,7 @@ else
     Accounts, add your Apple ID (a free one works), then run this again.
 NOTE
 fi
-if [[ -z "${AGENT_USAGE_BUNDLE_PREFIX:-}" ]]; then
-  if [[ "$AGENT_USAGE_TEAM" == "UYGU8PDBPS" ]]; then
-    AGENT_USAGE_BUNDLE_PREFIX="com.karthikeyaudupa"
-  else
-    # Bundle IDs belong to one team, so a builder needs their own prefix.
-    AGENT_USAGE_BUNDLE_PREFIX="com.$(id -un | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
-  fi
-fi
 echo "    bundle ID: $AGENT_USAGE_BUNDLE_PREFIX.agent-usage"
-export AGENT_USAGE_TEAM AGENT_USAGE_BUNDLE_PREFIX
 
 say "Building (the first build takes a few minutes)"
 ./scripts/build-app.sh --install

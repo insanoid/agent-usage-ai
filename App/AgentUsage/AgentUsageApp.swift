@@ -39,7 +39,7 @@ struct AgentUsageApp: App {
 
 /// Hands each fresh report to the widget through the shared App Group cache.
 enum WidgetBridge {
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "widget")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "widget")
 
     /// The report saved by the last run, so a restart does not start blank.
     @MainActor

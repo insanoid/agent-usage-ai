@@ -19,8 +19,8 @@ usage limits — every subscription, side by side — and when each one resets.
 </p>
 
 - **Grouped by provider, then profile.** Each profile shows its plan (Team ·
-  Max 5×, Pro, Pro Lite…), any free usage-limit resets with their use-by date,
-  and one row per limit — 5-hour, weekly, model-specific (Fable) — with time
+  Max 5×, Pro, Pro Lite…), any free usage-limit resets with their use-by date
+  (Claude's are opt-in, see below), and one row per limit — 5-hour, weekly, model-specific (Fable) — with time
   until it resets, plus extra-usage spend.
 - **Widget** in small, medium and large sizes, for Notification Center or the
   desktop. Edit it to choose which profiles it shows.
@@ -220,10 +220,14 @@ bin/agent-usage --config config/subscriptions.json --json   # what the app reads
 ```
 
 - **Claude:** reads the OAuth token Claude Code keeps in the Keychain, then
-  calls `api.anthropic.com/api/oauth/usage` and `/api/oauth/profile`. Free
-  resets and plan details come from undocumented parts of that API; if they
-  change, only those details disappear. The plan is cached for a day in
-  `~/.cache/agent-usage/`.
+  calls `api.anthropic.com/api/oauth/usage` and `/api/oauth/profile`. The plan
+  is cached for a day in `~/.cache/agent-usage/`.
+- **Claude free resets are opt-in** (Settings → *Claude free resets*, or
+  `--free-resets` / `AGENT_USAGE_FREE_RESETS=1` for the script). Anthropic only
+  reports them to Claude Code, so with the option on, the usage request adds
+  `?cedar_ember=1` and identifies itself as the installed Claude Code. This is
+  undocumented and may break or conflict with Anthropic's terms; off, the app
+  never presents itself as Claude Code.
 - **Codex:** runs `codex app-server` per folder and asks it for the account's
   rate limits, the same numbers the Codex TUI shows.
 - **Credentials are only read, never written or sent anywhere else.** An idle
@@ -260,7 +264,7 @@ swiftformat Sources Tests App && swiftlint lint Sources Tests App
 
 `scripts/build-app.sh` takes the signing team and bundle-ID prefix from
 `AGENT_USAGE_TEAM` and `AGENT_USAGE_BUNDLE_PREFIX`; `install.sh` works both out
-from your Keychain. Logs: `/usr/bin/log show --last 10m --info --predicate 'subsystem == "com.karthikeyaudupa.agent-usage"'`.
+from your Keychain. Logs: `/usr/bin/log show --last 10m --info --predicate 'subsystem == "AgentUsage"'`.
 
 Provider marks: LobeHub Icons (MIT). Robot: Lucide (ISC). See
 [`Sources/AgentUsageUI/Resources/ATTRIBUTION.md`](Sources/AgentUsageUI/Resources/ATTRIBUTION.md).

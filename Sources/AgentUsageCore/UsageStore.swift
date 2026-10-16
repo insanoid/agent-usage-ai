@@ -19,7 +19,7 @@ public final class UsageStore {
     public private(set) var isRefreshing = false
     public private(set) var lastSuccess: Date?
 
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "refresh")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "refresh")
 
     private let source: UsageSource
     private let onReport: @MainActor (UsageReport) -> Void

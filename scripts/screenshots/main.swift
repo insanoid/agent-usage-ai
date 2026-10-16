@@ -2,7 +2,8 @@
 // the small, medium and large widget, each in light and dark. Run through
 // scripts/screenshots.sh, which links the app's view files next to this one.
 //
-// Usage: Screenshots <report.json> <subscriptions.json> <output-dir>
+// Usage: Screenshots <report.json | --sample> <subscriptions.json> <output-dir>
+// --sample renders UsageReport.sample(): made-up numbers, safe to publish.
 import AgentUsageCore
 import AgentUsageUI
 import AppKit
@@ -67,11 +68,13 @@ func snapshot(_ view: some View, dark: Bool, to url: URL) throws {
 func run() async throws {
     let arguments = CommandLine.arguments
     guard arguments.count == 4 else {
-        print("usage: Screenshots <report.json> <subscriptions.json> <output-dir>")
+        print("usage: Screenshots <report.json | --sample> <subscriptions.json> <output-dir>")
         exit(2)
     }
     NSApplication.shared.setActivationPolicy(.prohibited)
-    let report = try UsageReport.decode(Data(contentsOf: URL(fileURLWithPath: arguments[1])))
+    let report = arguments[1] == "--sample"
+        ? UsageReport.sample()
+        : try UsageReport.decode(Data(contentsOf: URL(fileURLWithPath: arguments[1])))
     let subscriptions = SubscriptionsModel(file: SubscriptionsFile(url: URL(fileURLWithPath: arguments[2])))
     let out = URL(fileURLWithPath: arguments[3])
     let store = UsageStore(source: FixedSource(report: report))

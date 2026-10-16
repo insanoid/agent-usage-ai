@@ -13,7 +13,7 @@ final class SubscriptionsModel {
 
     let file: SubscriptionsFile
     private let onChange: @MainActor () -> Void
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "subscriptions")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "subscriptions")
 
     /// Installs the bundled default configuration on first run, then loads.
     init(file: SubscriptionsFile = .standard(), onChange: @escaping @MainActor () -> Void = {}) {

@@ -57,7 +57,7 @@ struct ProfileEntity: AppEntity {
 
 /// Offers the profiles in the app's last report.
 struct ProfileQuery: EntityQuery {
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "widget")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "widget")
 
     func entities(for identifiers: [ProfileEntity.ID]) async throws -> [ProfileEntity] {
         let wanted = Set(identifiers)
@@ -101,7 +101,7 @@ struct UsageEntry: TimelineEntry {
 struct UsageProvider: AppIntentTimelineProvider {
     private static let step: TimeInterval = 5 * 60
     private static let entryCount = 12
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "widget")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "widget")
 
     func placeholder(in _: Context) -> UsageEntry {
         UsageEntry(date: Date(), report: .sample(), problem: nil)

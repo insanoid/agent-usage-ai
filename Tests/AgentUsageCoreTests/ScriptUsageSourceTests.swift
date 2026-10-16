@@ -95,3 +95,20 @@ struct PythonCheckTests {
         #expect(ScriptUsageSource.hasPython(environment: ["PATH": dir.path]))
     }
 }
+
+struct ScriptArgumentTests {
+    private let source = ScriptUsageSource(
+        scriptURL: URL(fileURLWithPath: "/app/agent-usage"),
+        configURL: URL(fileURLWithPath: "/support/subscriptions.json")
+    )
+
+    @Test func freeResetsAreOffUnlessAskedFor() {
+        #expect(source.arguments(freeResets: false) == [
+            "python3", "/app/agent-usage", "--json", "--config", "/support/subscriptions.json",
+        ])
+    }
+
+    @Test func freeResetsAddTheFlag() {
+        #expect(source.arguments(freeResets: true).last == "--free-resets")
+    }
+}

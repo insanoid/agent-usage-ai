@@ -60,7 +60,7 @@ public enum AppGlyph {
 /// Loads each SVG once. NSImage reads SVG natively, which works the same in
 /// `swift build` and Xcode builds — an asset catalog only compiles in Xcode.
 private enum LogoCache {
-    private static let logger = Logger(subsystem: "com.karthikeyaudupa.agent-usage", category: "logo")
+    private static let logger = Logger(subsystem: Log.subsystem, category: "logo")
 
     @MainActor private static var images: [String: NSImage] = [:]
 

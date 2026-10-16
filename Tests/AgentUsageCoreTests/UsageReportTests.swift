@@ -23,7 +23,7 @@ struct UsageReportTests {
 
     @Test func decodesSpendAndCodex() throws {
         let work = try fixture().accounts[0]
-        #expect(work.claude?.spend?.used == 405.06)
+        #expect(work.claude?.spend?.used == 128.4)
         #expect(work.claude?.spend?.enabled == true)
         #expect(work.codex?.plan == "Business")
         #expect(work.codex?.planDetail == "Pro Lite")

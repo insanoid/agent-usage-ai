@@ -15,6 +15,9 @@ public struct ScriptUsageSource: UsageSource {
 
     /// `defaults write <bundle id> scriptPath <path>` overrides the location.
     public static let scriptPathDefaultsKey = "scriptPath"
+    /// Settings' "Free resets" switch: passes `--free-resets` to the script,
+    /// which then identifies to Anthropic as Claude Code. Off by default.
+    public static let freeResetsDefaultsKey = "freeResetsEnabled"
 
     public let scriptURL: URL
     /// The subscriptions file passed as `--config`; nil lets the script fall
@@ -49,7 +52,7 @@ public struct ScriptUsageSource: UsageSource {
 
         let output = try await ProcessRunner.run(
             executable: URL(fileURLWithPath: "/usr/bin/env"),
-            arguments: ["python3", scriptURL.path, "--json"] + (configURL.map { ["--config", $0.path] } ?? []),
+            arguments: arguments(freeResets: UserDefaults.standard.bool(forKey: Self.freeResetsDefaultsKey)),
             environment: environment,
             timeout: Self.timeout
         )
@@ -67,6 +70,12 @@ public struct ScriptUsageSource: UsageSource {
         } catch {
             throw UsageError.unreadableOutput(String(describing: error))
         }
+    }
+
+    func arguments(freeResets: Bool) -> [String] {
+        ["python3", scriptURL.path, "--json"]
+            + (configURL.map { ["--config", $0.path] } ?? [])
+            + (freeResets ? ["--free-resets"] : [])
     }
 
     /// Whether a real Python 3 is reachable. `/usr/bin/python3` exists on
