@@ -28,9 +28,16 @@ public struct OverviewStyle: Sendable {
     public let profileGap: CGFloat
     public let headerGap: CGFloat
     public let rowGap: CGFloat
+    /// Extra-usage spend and free resets. The large widget leaves them to the
+    /// panel so every limit row fits its fixed height.
+    public let showsExtras: Bool
 
-    public static let panel = OverviewStyle(providerGap: 20, profileGap: 12, headerGap: 10, rowGap: 7)
-    public static let dense = OverviewStyle(providerGap: 12, profileGap: 8, headerGap: 6, rowGap: 4)
+    public static let panel = OverviewStyle(
+        providerGap: 20, profileGap: 12, headerGap: 10, rowGap: 7, showsExtras: true
+    )
+    public static let dense = OverviewStyle(
+        providerGap: 12, profileGap: 8, headerGap: 6, rowGap: 4, showsExtras: false
+    )
 }
 
 /// A 4-point spacing scale.

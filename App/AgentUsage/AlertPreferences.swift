@@ -1,3 +1,4 @@
+import AgentUsageUI
 import AppKit
 import SwiftUI
 
@@ -13,28 +14,12 @@ enum AlertPreferences {
     static let defaultColorHex = "#FF9500"
     static let previewDuration: Duration = .seconds(4)
 
+    /// The stored colour, or the default when the stored value is not a colour.
     static func color(fromHex hex: String) -> NSColor {
-        var value: UInt64 = 0
-        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard digits.count == 6, Scanner(string: digits).scanHexInt64(&value) else {
-            return color(fromHex: defaultColorHex)
-        }
-        return NSColor(
-            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
-            green: CGFloat((value >> 8) & 0xFF) / 255,
-            blue: CGFloat(value & 0xFF) / 255,
-            alpha: 1
-        )
+        HexColor.color(hex) ?? HexColor.color(defaultColorHex) ?? .systemOrange
     }
 
     static func hex(from color: Color) -> String {
-        guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return defaultColorHex }
-        let channel = { (value: CGFloat) in Int((min(max(value, 0), 1) * 255).rounded()) }
-        return String(
-            format: "#%02X%02X%02X",
-            channel(srgb.redComponent),
-            channel(srgb.greenComponent),
-            channel(srgb.blueComponent)
-        )
+        HexColor.hex(NSColor(color)) ?? defaultColorHex
     }
 }

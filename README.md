@@ -7,9 +7,15 @@
 A macOS menu bar app and widget that show your **Claude Code** and **Codex**
 usage limits — every subscription, side by side — and when each one resets.
 
-<p>
-  <img src="docs/images/panel.png" alt="The menu bar panel: Claude and Codex profiles with their plans, free resets, and a bar per limit" width="367">
-  <img src="docs/images/widget-medium.png" alt="The medium widget: a column per provider, a bar per profile" width="365">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark.png">
+    <img src="docs/images/panel-light.png" alt="The menu bar panel: Claude and Codex profiles with their plans, free resets, and a bar per limit" width="410">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-dark.png">
+    <img src="docs/images/widget-light.png" alt="The medium widget: a column per provider, a bar per profile" width="410">
+  </picture>
 </p>
 
 - **Grouped by provider, then profile.** Each profile shows its plan (Team ·
@@ -35,12 +41,12 @@ ready-built `AgentUsage-<version>-no-widget.zip`. It is ad-hoc signed — signed
 but not by an Apple-registered developer, and not notarized — so macOS asks
 once before opening it:
 
-1. Unzip it and move **AgentUsage.app** to `~/Applications` (or `/Applications`).
+1. Unzip it and move **AgentUsage.app** to `/Applications`.
 2. Double-click it. macOS says it cannot verify the developer; click **Done**.
 3. Open **System Settings → Privacy & Security**, scroll to *Security*, click
    **Open Anyway** next to Agent Usage, and confirm.
 
-   Or, in Terminal: `xattr -dr com.apple.quarantine ~/Applications/AgentUsage.app`
+   Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/AgentUsage.app`
 
 4. Agent Usage reads usage with Python 3, which comes with Apple's command
    line tools. If it says Python is missing, run `xcode-select --install`.
@@ -58,7 +64,7 @@ git clone https://github.com/insanoid/agent-usage-ai && cd agent-usage-ai && ./s
 ```
 
 The script checks your tools, installs `xcodegen` if needed, builds the app,
-signs it, copies it to `~/Applications` and starts it. Look for the robot in
+signs it, copies it to `/Applications` and starts it. Look for the robot in
 the menu bar. To update later: `git pull && ./scripts/install.sh`.
 
 ## Build, sign and deploy on your Mac
@@ -88,8 +94,21 @@ AGENT_USAGE_TEAM= AGENT_USAGE_BUNDLE_PREFIX=com.yourname ./scripts/build-app.sh 
 
 `build-app.sh` generates the Xcode project from `project.yml`, builds a Release
 copy in `build/`, signs it (ad-hoc builds drop the widget and are re-signed
-with `codesign --sign -`), and with `--install` copies it to `~/Applications`
+with `codesign --sign -`), and with `--install` copies it to `/Applications`
 and restarts it. Turn on **Open at login** in Settings.
+It keeps exactly one copy registered with macOS: older copies (such as one in
+`~/Applications`) are removed, and the build folder's copy is unregistered, so
+the widget gallery always finds the installed app.
+
+To have every build install itself, create `scripts/local.env` (gitignored):
+
+```sh
+AGENT_USAGE_INSTALL_DIR=/Applications   # where to install
+AGENT_USAGE_AUTO_INSTALL=1              # install after every team-signed build
+```
+
+Ad-hoc builds never auto-install, so packaging a download cannot replace your
+widget-bearing copy.
 
 **3. Package for someone else.**
 
@@ -121,6 +140,13 @@ Mac: `./scripts/package.sh && gh release upload v0.3.0 dist/AgentUsage-0.3.0.zip
 Click the robot, then the gear. Each **subscription** is a provider and the
 folder its login lives in:
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
+    <img src="docs/images/settings-light.png" alt="Settings: Open at login, the extra-usage alert and its colour, Quit, and the subscriptions for each provider with Log in buttons" width="560">
+  </picture>
+</p>
+
 | Provider | Folder | Default |
 |----------|--------|---------|
 | Claude Code | `CLAUDE_CONFIG_DIR` | `~/.claude` |
@@ -147,6 +173,38 @@ which doubles as a sample: four folders, no credentials.
 
 Your copy lives in `~/Library/Application Support/AgentUsage/subscriptions.json`;
 edit it in the app or by hand.
+
+## The widget
+
+Add it from Notification Center or the desktop: right-click → **Edit Widgets**
+→ **Agent Usage**, in small, medium or large.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-small-dark.png">
+    <img src="docs/images/widget-small-light.png" alt="Small widget: the profile closest to a limit, with all its limits" width="200">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-dark.png">
+    <img src="docs/images/widget-light.png" alt="Medium widget: a column per provider, a bar per profile" width="410">
+  </picture>
+</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/widget-large-dark.png">
+    <img src="docs/images/widget-large-light.png" alt="Large widget: every provider and profile with a row per limit" width="410">
+  </picture>
+</p>
+
+- **Small** shows the profile closest to a limit.
+- **Medium** shows a column per provider, with each profile's most-used limit.
+- **Large** shows every profile with a row per limit, like the panel.
+
+To choose what a widget shows, right-click it → **Edit "Agent Usage"** →
+**Profiles**, and pick any of "Claude · Work", "Codex · Personal" and so on.
+Leave it empty to show everything; each widget keeps its own choice. The widget
+updates whenever the app refreshes, so keep the app running (turn on **Open at
+login**).
 
 ## How it works
 
@@ -179,10 +237,12 @@ bin/agent-usage --config config/subscriptions.json --json   # what the app reads
 ## Develop
 
 ```sh
-swift test                                  # unit tests, no Xcode project needed
+swift test                                  # Swift unit tests (core and UI), no Xcode project needed
+uvx pytest Tests/ScriptTests                # unit tests for bin/agent-usage
 AGENT_USAGE_LIVE=1 swift test               # also run the real script against your logins
 swiftformat Sources Tests App && swiftlint lint Sources Tests App
 ./scripts/build-app.sh --install            # rebuild and restart
+./scripts/screenshots.sh                    # regenerate the README screenshots from the real views
 ```
 
 | Path | What |
@@ -194,7 +254,8 @@ swiftformat Sources Tests App && swiftlint lint Sources Tests App
 | `App/AgentUsage` | The menu bar app and its settings window. |
 | `App/AgentUsageWidget` | The WidgetKit extension. |
 | `project.yml` | XcodeGen spec; the `.xcodeproj` is generated, not committed. |
-| `scripts/` | `install.sh` (one command), `build-app.sh`, `package.sh`, and `make-icon.swift`, which draws the app icon. |
+| `scripts/` | `install.sh` (one command), `build-app.sh`, `package.sh`, `screenshots.sh` (README images), and `make-icon.swift`, which draws the app icon. |
+| `.github/workflows/tests.yml` | Every push and PR: script tests on Python 3.9 and 3.13, Swift tests and lint. |
 | `.github/workflows/release.yml` | Tagged releases: test, package ad-hoc, publish. |
 
 `scripts/build-app.sh` takes the signing team and bundle-ID prefix from

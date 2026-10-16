@@ -15,7 +15,9 @@ struct AgentUsageWidgetBundle: WidgetBundle {
 struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(
-            kind: "AgentUsage",
+            // Not "AgentUsage": that kind was cached by macOS as a widget
+            // without settings, so its instances never receive a profile choice.
+            kind: "AgentUsageProfiles",
             intent: SelectProfilesIntent.self,
             provider: UsageProvider()
         ) { entry in

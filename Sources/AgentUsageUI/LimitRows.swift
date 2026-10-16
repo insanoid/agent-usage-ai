@@ -15,17 +15,29 @@ public struct LimitRows: View {
     private let now: Date
     private let density: Density
     private let rowGap: CGFloat
+    /// Where clicking the free-reset row goes: the provider's usage page.
+    private let resetsURL: URL?
+    private let showsExtras: Bool
 
     private static let barHeight: CGFloat = 5
     /// Fits "100%" in SF Mono semibold.
     private static let percentWidth: CGFloat = 40
     private static let timeWidth: CGFloat = 54
 
-    public init(usage: AgentUsage, now: Date, density: Density = .regular, rowGap: CGFloat = Spacing.sm) {
+    public init(
+        usage: AgentUsage,
+        now: Date,
+        density: Density = .regular,
+        rowGap: CGFloat = Spacing.sm,
+        resetsURL: URL? = nil,
+        showsExtras: Bool = true
+    ) {
         self.usage = usage
         self.now = now
         self.density = density
         self.rowGap = rowGap
+        self.resetsURL = resetsURL
+        self.showsExtras = showsExtras
     }
 
     public var body: some View {
@@ -55,7 +67,7 @@ public struct LimitRows: View {
                     }
                 }
             }
-            if density == .regular, let spend = usage.spend?.displayText {
+            if density == .regular, showsExtras, let spend = usage.spend?.displayText {
                 HStack(spacing: Spacing.md) {
                     Text("Extra usage")
                         .font(Typography.body)
@@ -65,8 +77,13 @@ public struct LimitRows: View {
                         .font(Typography.money)
                 }
             }
-            if density == .regular, let count = usage.resetCredits, count > 0 {
-                FreeResetRow(count: count, expiresAt: usage.resetCreditsExpireAt, isUseful: isCapped)
+            if density == .regular, showsExtras, let count = usage.resetCredits, count > 0 {
+                FreeResetRow(
+                    count: count,
+                    expiresAt: usage.resetCreditsExpireAt,
+                    isUseful: isCapped,
+                    destination: resetsURL
+                )
             }
         }
     }
@@ -88,8 +105,21 @@ private struct FreeResetRow: View {
     let count: Int
     let expiresAt: Date?
     let isUseful: Bool
+    /// The provider's usage page; the row opens it when clicked.
+    let destination: URL?
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
+        if let destination {
+            Button { openURL(destination) } label: { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(spacing: Spacing.md) {
             Text(count == 1 ? "Free reset" : "Free resets")
                 .font(Typography.body)
@@ -117,6 +147,7 @@ private struct FreeResetRow: View {
     private var helpText: String {
         let expiry = expiresAt.map { " Use by \($0.formatted(date: .complete, time: .shortened))." } ?? ""
         let when = isUseful ? "A limit is used up, so now is when a reset helps." : "Keep it for when a limit runs out."
-        return "Resets a used-up limit to zero in Claude Code. \(when)\(expiry)"
+        let open = destination == nil ? "" : " Click to open the usage page."
+        return "Resets a used-up limit to zero. \(when)\(expiry)\(open)"
     }
 }

@@ -57,7 +57,13 @@ private struct ProviderSection: View {
                     if entry.id != entries.first?.id {
                         Hairline()
                     }
-                    ProfileView(name: entry.account.displayName, usage: entry.usage, now: now, style: style)
+                    ProfileView(
+                        agent: agent,
+                        name: entry.account.displayName,
+                        usage: entry.usage,
+                        now: now,
+                        style: style
+                    )
                 }
             }
         }
@@ -65,6 +71,7 @@ private struct ProviderSection: View {
 }
 
 private struct ProfileView: View {
+    let agent: Agent
     let name: String
     let usage: AgentUsage
     let now: Date
@@ -82,7 +89,13 @@ private struct ProfileView: View {
                     .textSelection(.enabled)
             }
             if !usage.limits.isEmpty {
-                LimitRows(usage: usage, now: now, rowGap: style.rowGap)
+                LimitRows(
+                    usage: usage,
+                    now: now,
+                    rowGap: style.rowGap,
+                    resetsURL: agent.usageSettingsURL,
+                    showsExtras: style.showsExtras
+                )
             }
         }
     }

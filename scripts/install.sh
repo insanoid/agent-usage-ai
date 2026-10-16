@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One command on a fresh Mac: check the tools, work out signing, build,
-# install to ~/Applications and start Agent Usage.
+# install to /Applications and start Agent Usage.
 #
 #   git clone https://github.com/insanoid/agent-usage-ai && cd agent-usage-ai && ./scripts/install.sh
 #
