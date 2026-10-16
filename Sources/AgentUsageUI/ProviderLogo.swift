@@ -35,12 +35,25 @@ public enum AppGlyph {
     /// Menu bar icons are drawn at 16–18 pt; the robot's thin strokes read best at 16.
     private static let menuBarSize = NSSize(width: 16, height: 16)
 
+    /// The robot as a template image, which macOS tints for the menu bar —
+    /// or, given `tint`, drawn in that colour instead.
     @MainActor
-    public static func menuBarRobot() -> NSImage? {
-        guard let image = LogoCache.image(named: "robot", template: true)?.copy() as? NSImage else { return nil }
-        image.size = menuBarSize
-        image.isTemplate = true
-        return image
+    public static func menuBarRobot(tint: NSColor? = nil) -> NSImage? {
+        guard let source = LogoCache.image(named: "robot", template: true) else { return nil }
+        guard let tint else {
+            let image = source.copy() as? NSImage
+            image?.size = menuBarSize
+            image?.isTemplate = true
+            return image
+        }
+        let tinted = NSImage(size: menuBarSize, flipped: false) { rect in
+            source.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.isTemplate = false
+        return tinted
     }
 }
 

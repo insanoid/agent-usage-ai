@@ -9,6 +9,8 @@ public enum Typography {
     public static let value = Font.system(size: 12, weight: .semibold, design: .monospaced)
     public static let money = Font.system(size: 11.5, weight: .medium, design: .monospaced)
     public static let time = Font.system(size: 11, design: .monospaced)
+    /// Status lines such as "Updated just now": the badge's size, in mono.
+    public static let status = Font.system(size: 10, design: .monospaced)
     public static let secondary = Font.system(size: 12)
     public static let small = Font.system(size: 11.5)
     public static let pill = Font.system(size: 11, weight: .medium)

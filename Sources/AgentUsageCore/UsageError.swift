@@ -7,6 +7,7 @@ public enum UsageError: LocalizedError, Equatable {
     case timedOut(seconds: Int)
     case unreadableOutput(String)
     case unsupportedVersion(Int)
+    case pythonMissing
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ public enum UsageError: LocalizedError, Equatable {
             "agent-usage printed output this app cannot read: \(reason)"
         case let .unsupportedVersion(version):
             "agent-usage report version \(version) is newer than this app supports"
+        case .pythonMissing:
+            "Agent Usage needs Python 3. Install Apple's command line tools: run xcode-select --install in Terminal."
         }
     }
 }

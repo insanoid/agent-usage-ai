@@ -42,11 +42,15 @@ public struct ScriptUsageSource: UsageSource {
         guard FileManager.default.fileExists(atPath: scriptURL.path) else {
             throw UsageError.scriptMissing(path: scriptURL.path)
         }
+        let environment = Self.environment()
+        guard Self.hasPython(environment: environment) else {
+            throw UsageError.pythonMissing
+        }
 
         let output = try await ProcessRunner.run(
             executable: URL(fileURLWithPath: "/usr/bin/env"),
             arguments: ["python3", scriptURL.path, "--json"] + (configURL.map { ["--config", $0.path] } ?? []),
-            environment: Self.environment(),
+            environment: environment,
             timeout: Self.timeout
         )
 
@@ -63,6 +67,29 @@ public struct ScriptUsageSource: UsageSource {
         } catch {
             throw UsageError.unreadableOutput(String(describing: error))
         }
+    }
+
+    /// Whether a real Python 3 is reachable. `/usr/bin/python3` exists on
+    /// every Mac but is only a stub until the developer tools are installed,
+    /// so it counts only when `xcode-select -p` finds them.
+    static func hasPython(environment: [String: String]) -> Bool {
+        let fileManager = FileManager.default
+        let dirs = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        if dirs.contains(where: { $0 != "/usr/bin" && fileManager.isExecutableFile(atPath: "\($0)/python3") }) {
+            return true
+        }
+        let developerDir = Process()
+        developerDir.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+        developerDir.arguments = ["-p"]
+        developerDir.standardOutput = FileHandle.nullDevice
+        developerDir.standardError = FileHandle.nullDevice
+        do {
+            try developerDir.run()
+        } catch {
+            return false
+        }
+        developerDir.waitUntilExit()
+        return developerDir.terminationStatus == 0
     }
 
     /// An app launched from Finder or at login gets launchd's minimal PATH,

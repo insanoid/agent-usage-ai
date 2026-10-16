@@ -65,11 +65,58 @@ public struct LimitRows: View {
                         .font(Typography.money)
                 }
             }
+            if density == .regular, let count = usage.resetCredits, count > 0 {
+                FreeResetRow(count: count, expiresAt: usage.resetCreditsExpireAt, isUseful: isCapped)
+            }
         }
+    }
+
+    /// A used-up limit is the moment a free reset is worth spending.
+    private var isCapped: Bool {
+        usage.limits.contains { $0.percent >= 100 }
     }
 
     /// Wide enough for "Fable weekly" in the regular density.
     private var labelWidth: CGFloat {
         density == .regular ? 86 : 40
+    }
+}
+
+/// "Free reset          1 · use by 22 Oct". Quiet by default; in the accent
+/// colour only while a limit is used up and the reset would help.
+private struct FreeResetRow: View {
+    let count: Int
+    let expiresAt: Date?
+    let isUseful: Bool
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Text(count == 1 ? "Free reset" : "Free resets")
+                .font(Typography.body)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: Spacing.md)
+            HStack(spacing: Spacing.xs) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("\(count)")
+                    .font(Typography.time)
+                if let expiresAt {
+                    // The date is detail: neutral grey, a step lighter than the count.
+                    // An explicit colour, as `.tertiary` would derive from the blue.
+                    Text("· use by \(expiresAt.formatted(.dateTime.day().month(.abbreviated)))")
+                        .font(Typography.time)
+                        .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                }
+            }
+            .foregroundStyle(isUseful ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+        }
+        .help(helpText)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var helpText: String {
+        let expiry = expiresAt.map { " Use by \($0.formatted(date: .complete, time: .shortened))." } ?? ""
+        let when = isUseful ? "A limit is used up, so now is when a reset helps." : "Keep it for when a limit runs out."
+        return "Resets a used-up limit to zero in Claude Code. \(when)\(expiry)"
     }
 }

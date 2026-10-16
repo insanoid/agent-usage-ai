@@ -30,21 +30,42 @@ struct SettingsContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xxl) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text("Subscriptions")
-                    .font(.system(size: 20, weight: .semibold))
-                Text("Each subscription is a provider and the folder its login lives in. "
-                    + "Subscriptions with the same name show together in the panel.")
-                    .font(Typography.secondary)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("Settings")
+                .font(.system(size: 20, weight: .semibold))
 
             if let error = model.lastError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(Typography.secondary)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
+            }
+
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                SectionHeader(title: "General")
+                LaunchAtLoginRow()
+                Hairline()
+                ExtraUsageAlertRow()
+                Hairline()
+                HStack(alignment: .center, spacing: Spacing.md) {
+                    VStack(alignment: .leading, spacing: Spacing.xxs) {
+                        Text("Quit Agent Usage")
+                            .font(Typography.profile)
+                        Text("Also on the menu bar icon: right-click it.")
+                            .font(Typography.small)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: Spacing.md)
+                    Button("Quit…") { AppActions.confirmQuit() }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                SectionHeader(title: "Subscriptions")
+                Text("Each subscription is a provider and the folder its login lives in. "
+                    + "Subscriptions with the same name show together in the panel.")
+                    .font(Typography.secondary)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ForEach(Agent.allCases) { agent in
@@ -295,5 +316,17 @@ private struct AddSubscriptionForm: View {
         if panel.runModal() == .OK, let url = panel.url {
             draft.dir = (url.path as NSString).abbreviatingWithTildeInPath
         }
+    }
+}
+
+/// A small-caps label over a settings group, like the panel's provider headers.
+private struct SectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(Typography.section)
+            .tracking(Typography.sectionTracking)
+            .foregroundStyle(.secondary)
     }
 }

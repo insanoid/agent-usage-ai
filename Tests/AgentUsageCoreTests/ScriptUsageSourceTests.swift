@@ -84,3 +84,14 @@ struct LiveScriptTests {
         #expect(!report.accounts.isEmpty)
     }
 }
+
+struct PythonCheckTests {
+    @Test func findsAPythonOnThePath() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "py-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let python = dir.appending(path: "python3")
+        try "#!/bin/sh\n".write(to: python, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: python.path)
+        #expect(ScriptUsageSource.hasPython(environment: ["PATH": dir.path]))
+    }
+}

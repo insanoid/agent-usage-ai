@@ -1,6 +1,5 @@
 import AgentUsageCore
 import AgentUsageUI
-import ServiceManagement
 import SwiftUI
 
 struct PanelFooter: View {
@@ -8,8 +7,6 @@ struct PanelFooter: View {
     let now: Date
 
     @Environment(\.openWindow) private var openWindow
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var loginError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -26,6 +23,8 @@ struct PanelFooter: View {
                         }
                         Text(updatedText)
                     }
+                    .font(Typography.status)
+                    .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.borderless)
                 .disabled(store.isRefreshing)
@@ -34,13 +33,6 @@ struct PanelFooter: View {
 
                 Spacer()
 
-                Toggle("Open at login", isOn: $launchAtLogin)
-                    .toggleStyle(.switch)
-                    .fixedSize()
-                    .controlSize(.mini)
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        setLaunchAtLogin(enabled)
-                    }
                 Button {
                     openWindow(id: SettingsView.windowID)
                     // A menu bar app is never frontmost on its own.
@@ -50,20 +42,10 @@ struct PanelFooter: View {
                 }
                 .buttonStyle(.borderless)
                 .keyboardShortcut(",")
-                .help("Subscriptions…")
-                Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut("q")
+                .help("Settings… (right-click the menu bar icon to quit)")
             }
             .font(Typography.small)
             .foregroundStyle(.secondary)
-
-            if let loginError {
-                Text(loginError)
-                    .font(Typography.small)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
         }
     }
 
@@ -75,23 +57,5 @@ struct PanelFooter: View {
             return "Updated just now"
         }
         return "Updated \(ResetFormat.countdown(to: now, now: lastSuccess)) ago"
-    }
-
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        let service = SMAppService.mainApp
-        // Resetting the toggle after a failure fires onChange again; the
-        // service already matches then, so there is nothing to do.
-        guard enabled != (service.status == .enabled) else { return }
-        do {
-            if enabled {
-                try service.register()
-            } else {
-                try service.unregister()
-            }
-            loginError = nil
-        } catch {
-            loginError = "Open at login: \(error.localizedDescription)"
-            launchAtLogin = service.status == .enabled
-        }
     }
 }

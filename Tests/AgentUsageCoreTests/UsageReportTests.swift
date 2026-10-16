@@ -240,3 +240,36 @@ struct FilterTests {
         #expect(report.filtered(to: []).accounts.count == 2)
     }
 }
+
+struct ExtraUsageTests {
+    private func spend(enabled: Bool) throws -> Spend {
+        try JSONDecoder().decode(Spend.self, from: Data(#"{"used": 10, "limit": 600, "enabled": \#(enabled)}"#.utf8))
+    }
+
+    private func usage(_ percents: [Double], extraEnabled: Bool) throws -> AgentUsage {
+        try AgentUsage(
+            limits: percents.enumerated().map { Limit(kind: "k\($0)", label: "L\($0)", percent: $1) },
+            spend: spend(enabled: extraEnabled)
+        )
+    }
+
+    @Test func aCappedLimitWithExtraUsageOnCounts() throws {
+        #expect(try usage([40, 100], extraEnabled: true).isOnExtraUsage)
+    }
+
+    @Test func notWhenExtraUsageIsOff() throws {
+        #expect(try !usage([100], extraEnabled: false).isOnExtraUsage)
+    }
+
+    @Test func notBelowTheCap() throws {
+        #expect(try !usage([99.9], extraEnabled: true).isOnExtraUsage)
+    }
+
+    @Test func reportListsOnlyClaudeAccountsOnExtraUsage() throws {
+        let report = try UsageReport(version: 1, generatedAt: Date(), accounts: [
+            Account(slot: "work", label: "Work", claude: usage([100], extraEnabled: true), codex: nil),
+            Account(slot: "personal", label: "Personal", claude: usage([30], extraEnabled: true), codex: nil),
+        ])
+        #expect(report.accountsOnExtraUsage.map(\.slot) == ["work"])
+    }
+}
