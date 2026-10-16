@@ -15,7 +15,7 @@ struct UsageReportTests {
 
     @Test func decodesScopedLimitsAndDates() throws {
         let work = try fixture().accounts[0]
-        let fable = try #require(work.claude.limits.first { $0.scope == "Fable" })
+        let fable = try #require(work.claude?.limits.first { $0.scope == "Fable" })
         #expect(fable.label == "Fable weekly")
         #expect(fable.percent == 100)
         #expect(fable.resetsAt == ISO8601DateFormatter().date(from: "2026-10-20T04:59:59Z"))
@@ -23,19 +23,19 @@ struct UsageReportTests {
 
     @Test func decodesSpendAndCodex() throws {
         let work = try fixture().accounts[0]
-        #expect(work.claude.spend?.used == 405.06)
-        #expect(work.claude.spend?.enabled == true)
+        #expect(work.claude?.spend?.used == 405.06)
+        #expect(work.claude?.spend?.enabled == true)
         #expect(work.codex?.plan == "Business")
         #expect(work.codex?.planDetail == "Pro Lite")
         #expect(work.codex?.limits.first?.level == .normal)
         #expect(work.codex?.resetCredits == 0)
-        #expect(work.claude.resetCredits == nil)
+        #expect(work.claude?.resetCredits == nil)
     }
 
     @Test func noteResultHasNoLimits() throws {
         let personal = try fixture().accounts[1]
-        #expect(personal.claude.note == "token stale — run: cc personal")
-        #expect(personal.claude.limits.isEmpty)
+        #expect(personal.claude?.note == "token stale — run: cc personal")
+        #expect(personal.claude?.limits.isEmpty == true)
         #expect(personal.codex == nil)
     }
 
@@ -165,16 +165,16 @@ struct CarryForwardTests {
             Limit(kind: "session", label: "5-hour", percent: 95, resetsAt: now.addingTimeInterval(-60)),
         ])
         let merged = report(AgentUsage(note: "token stale")).carryingForward(from: report(old), now: now)
-        #expect(merged.accounts.first?.claude.limits.isEmpty == true)
-        #expect(merged.accounts.first?.claude.note == "token stale")
+        #expect(merged.accounts.first?.claude?.limits.isEmpty == true)
+        #expect(merged.accounts.first?.claude?.note == "token stale")
     }
 
     @Test func freshNumbersWin() {
         let old = AgentUsage(limits: [Limit(kind: "session", label: "5-hour", percent: 40)])
         let fresh = AgentUsage(limits: [Limit(kind: "session", label: "5-hour", percent: 55)])
         let merged = report(fresh).carryingForward(from: report(old))
-        #expect(merged.accounts.first?.claude.limits.first?.percent == 55)
-        #expect(merged.accounts.first?.claude.note == nil)
+        #expect(merged.accounts.first?.claude?.limits.first?.percent == 55)
+        #expect(merged.accounts.first?.claude?.note == nil)
     }
 }
 
@@ -202,5 +202,41 @@ struct UsageStoreSeedTests {
         let claude = try #require(store.report?.accounts.first?.claude)
         #expect(claude.limits.first?.percent == 40)
         #expect(claude.note == "rate limited — showing earlier numbers")
+    }
+}
+
+struct SubscriptionTests {
+    @Test(arguments: [("Work", "work"), ("Work 2", "work-2"), ("  Ünï Work!! ", "n-work"), ("!!!", "account")])
+    func slotMatchesTheScript(name: String, slot: String) {
+        #expect(Subscription.slot(for: name) == slot)
+    }
+
+    @Test func sampleConfigLoadsAndRoundTrips() throws {
+        let sample = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "config/subscriptions.json")
+        let file = SubscriptionsFile(url: FileManager.default.temporaryDirectory
+            .appending(path: "agent-usage-subs-\(UUID().uuidString)/subscriptions.json"))
+        try file.installIfMissing(from: sample)
+        let loaded = try file.load()
+        #expect(loaded.map(\.slot) == ["work", "personal", "work", "personal"])
+        #expect(loaded.map(\.provider) == [.claude, .claude, .codex, .codex])
+        try file.save(loaded)
+        #expect(try file.load() == loaded)
+    }
+}
+
+struct FilterTests {
+    @Test func keepsOnlyChosenProfiles() {
+        let usage = AgentUsage(limits: [Limit(kind: "session", label: "5-hour", percent: 10)])
+        let report = UsageReport(version: 1, generatedAt: Date(), accounts: [
+            Account(slot: "work", label: "Work", claude: usage, codex: usage),
+            Account(slot: "personal", label: "Personal", claude: usage, codex: usage),
+        ])
+        let filtered = report.filtered(to: ["claude/work", "codex/personal"])
+        #expect(filtered.accounts.map(\.slot) == ["work", "personal"])
+        #expect(filtered.accounts[0].codex == nil)
+        #expect(filtered.accounts[1].claude == nil)
+        #expect(report.filtered(to: []).accounts.count == 2)
     }
 }

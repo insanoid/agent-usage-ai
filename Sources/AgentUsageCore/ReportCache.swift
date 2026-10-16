@@ -4,8 +4,16 @@ import Foundation
 /// app and its widget share. The widget is sandboxed and cannot run the
 /// script, so this file is its only data source.
 public struct ReportCache: Sendable {
-    /// Team-prefixed, which macOS accepts without a provisioning profile.
-    public static let appGroup = "UYGU8PDBPS.com.karthikeyaudupa.agent-usage"
+    /// Info.plist key holding the App Group, set at build time from the
+    /// signing team, so each builder's copy uses a group their team owns.
+    public static let appGroupInfoKey = "AgentUsageAppGroup"
+
+    /// Team-prefixed (`TEAMID.bundle-prefix.agent-usage`), which macOS accepts
+    /// without a provisioning profile. Nil in a build without one.
+    public static var appGroup: String? {
+        Bundle.main.object(forInfoDictionaryKey: appGroupInfoKey) as? String
+    }
+
     private static let fileName = "report.json"
 
     public let fileURL: URL
@@ -14,10 +22,11 @@ public struct ReportCache: Sendable {
         self.fileURL = fileURL
     }
 
-    /// The cache in the shared container, or nil when this process lacks the
-    /// App Group entitlement.
+    /// The cache in the shared container, or nil when this build has no
+    /// App Group (built without a signing team) or lacks the entitlement.
     public static func shared() -> ReportCache? {
-        FileManager.default
+        guard let appGroup, !appGroup.isEmpty else { return nil }
+        return FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroup)
             .map { ReportCache(fileURL: $0.appending(path: fileName)) }
     }

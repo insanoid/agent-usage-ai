@@ -27,3 +27,18 @@ public struct UsageBar: View {
         .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
     }
 }
+
+/// A divider quieter than `Divider`, which reads as a heavy rule on the
+/// panel's dark material.
+public struct Hairline: View {
+    private static let opacity = 0.07
+
+    public init() {}
+
+    public var body: some View {
+        Rectangle()
+            .fill(.primary.opacity(Self.opacity))
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+}

@@ -1,0 +1,712 @@
+#!/usr/bin/env python3
+"""agent-usage — 5-hour and weekly limits for every account, both agents.
+
+One table so you can see which account has headroom before starting work.
+
+Accounts come from `--config <file>` — a JSON list of subscriptions, each a
+name, a provider (claude or codex) and the folder that profile lives in; the
+same name pairs a Claude and a Codex folder into one account. Without
+`--config`, they come from accounts.conf through cc-conf.
+`--json` prints the same data as one JSON document (schema version 1) for the
+AgentUsage menu bar app and other consumers.
+
+Sources, both authoritative:
+  Claude Code  GET https://api.anthropic.com/api/oauth/usage with the profile's
+               OAuth access token (needs the user:profile scope, which an
+               interactive /login token has).
+  Codex        the app-server method account/rateLimits/read, run once per
+               CODEX_HOME. Same numbers the Codex TUI shows.
+
+Credentials are read, never written or printed. A Claude access token expires
+after a few hours; Claude Code refreshes it whenever that profile runs, so an
+idle profile reports "stale" rather than a number.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import re
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+
+CONF = os.environ.get("CC_ACCOUNTS_CONF") or os.path.expanduser(
+    "~/.config/claude-accounts/accounts.conf"
+)
+CC_CONF = os.path.expanduser("~/.agents/bin/cc-conf")
+# `cedar_ember=1` adds the free usage-limit resets ("grants") to the response.
+# The server only reports them to a Claude Code client, hence CLIENT_HEADERS.
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage?cedar_ember=1"
+CLAUDE_VERSIONS_DIR = os.path.expanduser("~/.local/share/claude/versions")
+HTTP_TOO_MANY_REQUESTS = 429
+# Used when no installed Claude Code version can be found.
+FALLBACK_CLAUDE_VERSION = "2.1.301"
+CODEX_TIMEOUT_S = 25
+PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
+# The plan rarely changes, so one profile call a day per account is plenty.
+PROFILE_CACHE_DIR = os.path.expanduser("~/.cache/agent-usage")
+PROFILE_CACHE_TTL_S = 24 * 3600
+
+
+class ConfigError(Exception):
+    """The account configuration could not be read; the message says why."""
+
+
+PROVIDERS = ("claude", "codex")
+
+
+def accounts_from_config(path: str) -> list[dict]:
+    """Accounts from a subscriptions file. Subscriptions sharing a name become
+    one account, so "Work" on Claude and "Work" on Codex sit together."""
+    try:
+        with open(os.path.expanduser(path)) as handle:
+            doc = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+
+    by_slot: dict = {}
+    for sub in doc.get("subscriptions") or []:
+        name = str(sub.get("name") or "").strip()
+        provider = sub.get("provider")
+        folder = os.path.expanduser(str(sub.get("dir") or "").strip())
+        if not name or provider not in PROVIDERS or not folder:
+            raise ConfigError(f"invalid subscription in {path}: {sub}")
+        slot = account_slot(name)
+        acct = by_slot.setdefault(slot, {"slot": slot, "label": name, "claude_dir": "", "codex_home": ""})
+        key = "claude_dir" if provider == "claude" else "codex_home"
+        if acct[key]:
+            raise ConfigError(f'two {provider} subscriptions named "{name}" in {path}')
+        acct[key] = folder
+    return list(by_slot.values())
+
+
+def account_slot(name: str) -> str:
+    """A stable key from a display name: "Work 2" becomes "work-2"."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "account"
+
+
+def accounts() -> list[dict]:
+    """Read accounts.conf through cc-conf, the one parser everything shares."""
+    out = []
+    try:
+        result = subprocess.run([CC_CONF, "slots"], capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise ConfigError(f"cc-conf not found at {CC_CONF}") from exc
+    if result.returncode != 0:
+        # cc-conf exits 1 when the file is missing; anything else is a real failure.
+        if not os.path.exists(CONF):
+            return out
+        raise ConfigError(f"cc-conf slots failed: {result.stderr.strip() or result.returncode}")
+    slots = result.stdout.split()
+    for slot in slots:
+        def field(name: str) -> str:
+            return subprocess.run(
+                [CC_CONF, "get", slot, name], capture_output=True, text=True
+            ).stdout.strip()
+
+        out.append(
+            {
+                "slot": slot,
+                "label": field("label") or slot,
+                "claude_dir": field("dir"),
+                "codex_home": field("codexdir"),
+            }
+        )
+    return out
+
+
+def claude_token(config_dir: str) -> tuple[str | None, str]:
+    """Return (access_token, note). Never returns the token in the note."""
+    if not config_dir:
+        return None, "no directory"
+
+    raw = None
+    if platform.system() == "Darwin":
+        raw = keychain_credential(config_dir)
+        if raw is None:
+            return None, "not logged in"
+    else:
+        path = os.path.join(config_dir, ".credentials.json")
+        if not os.path.exists(path):
+            return None, "not logged in"
+        raw = open(path).read()
+
+    try:
+        blob = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, "credential unreadable"
+
+    oauth = blob.get("claudeAiOauth") or blob
+    token = oauth.get("accessToken")
+    if not token:
+        return None, "no access token"
+
+    expires = oauth.get("expiresAt")
+    if expires and expires / 1000 < time.time():
+        return None, "token stale"
+    return token, ""
+
+
+DEFAULT_CLAUDE_DIR = os.path.expanduser("~/.claude")
+
+
+def keychain_credential(config_dir: str) -> str | None:
+    """Claude Code names its Keychain entry after CLAUDE_CONFIG_DIR. A login
+    made without that variable — the usual one, in ~/.claude — has no suffix."""
+    digest = hashlib.sha256(config_dir.encode()).hexdigest()[:8]
+    services = [f"Claude Code-credentials-{digest}"]
+    if os.path.realpath(config_dir) == os.path.realpath(DEFAULT_CLAUDE_DIR):
+        services.append("Claude Code-credentials")
+    for service in services:
+        found = subprocess.run(
+            ["security", "find-generic-password", "-s", service, "-w"],
+            capture_output=True,
+            text=True,
+        )
+        if found.returncode == 0:
+            return found.stdout.strip()
+    return None
+
+
+def claude_usage(config_dir: str) -> dict:
+    token, note = claude_token(config_dir)
+    if not token:
+        return {"note": note}
+
+    req = urllib.request.Request(
+        USAGE_URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": "oauth-2025-04-20",
+            **client_headers(),
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code == HTTP_TOO_MANY_REQUESTS:
+            return {"note": "rate limited — try again in a few minutes"}
+        return {"note": f"HTTP {exc.code}"}
+    except Exception as exc:  # network, DNS, timeout
+        return {"note": type(exc).__name__}
+
+    if data.get("type") == "error":
+        return {"note": (data.get("error") or {}).get("type", "error")}
+
+    return {
+        "limits": claude_limits(data),
+        "spend": claude_spend(data.get("spend")),
+        "breakdown": [
+            {"name": row.get("display_name") or row.get("key"), "percent": row.get("percent")}
+            for row in (data.get("seven_day_breakdown") or {}).get("rows") or []
+            if (row.get("display_name") or row.get("key")) and row.get("percent") is not None
+        ],
+        **claude_reset_grants(data.get("cedar_ember")),
+        **claude_plan(token, config_dir),
+    }
+
+
+def claude_plan(token: str, config_dir: str) -> dict:
+    """The subscription as a short label, e.g. {"plan": "Team", "plan_detail":
+    "Max 5×"}. Read from the profile endpoint and cached for a day; only the
+    two plan fields are cached, never the account's personal details."""
+    digest = hashlib.sha256(config_dir.encode()).hexdigest()[:8]
+    path = os.path.join(PROFILE_CACHE_DIR, f"claude-plan-{digest}.json")
+    org = None
+    try:
+        if time.time() - os.path.getmtime(path) < PROFILE_CACHE_TTL_S:
+            with open(path) as handle:
+                org = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        org = None  # Missing, stale or corrupt: fetch afresh below.
+
+    if org is None:
+        req = urllib.request.Request(
+            PROFILE_URL,
+            headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20", **client_headers()},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                full = json.load(resp).get("organization") or {}
+        except Exception as exc:  # The plan is decoration; usage still shows without it.
+            print(f"agent-usage: plan lookup failed: {type(exc).__name__}", file=sys.stderr)
+            return {"plan": None, "plan_detail": None}
+        org = {k: full.get(k) for k in ("organization_type", "rate_limit_tier")}
+        try:
+            os.makedirs(PROFILE_CACHE_DIR, exist_ok=True)
+            # Write then rename, so a concurrent reader never sees half a file.
+            partial = f"{path}.{os.getpid()}.tmp"
+            with open(partial, "w") as handle:
+                json.dump(org, handle)
+            os.replace(partial, path)
+        except OSError as exc:
+            print(f"agent-usage: plan cache not written: {exc}", file=sys.stderr)
+
+    return claude_plan_label(org.get("organization_type"), org.get("rate_limit_tier"))
+
+
+CLAUDE_ORG_LABELS = {
+    "claude_pro": "Pro",
+    "claude_max": "Max",
+    "claude_team": "Team",
+    "claude_enterprise": "Enterprise",
+    "claude_free": "Free",
+}
+
+
+def claude_plan_label(org_type: str | None, tier: str | None) -> dict:
+    fallback = (org_type or "").replace("claude_", "").replace("_", " ").title() or None
+    plan = CLAUDE_ORG_LABELS.get(org_type or "", fallback)
+    multiplier = None
+    for size in ("20x", "5x"):
+        if tier and tier.endswith(f"max_{size}"):
+            multiplier = f"Max {size[:-1]}×"
+    if plan == "Max":
+        return {"plan": multiplier or "Max", "plan_detail": None}
+    return {"plan": plan, "plan_detail": multiplier}
+
+
+def client_headers() -> dict:
+    """Identify as the installed Claude Code, the only surface the server
+    reports reset grants to. Undocumented: if it stops working, the grants
+    simply come back as ineligible and the rest of the response is unchanged."""
+    version = FALLBACK_CLAUDE_VERSION
+    try:
+        installed = [v for v in os.listdir(CLAUDE_VERSIONS_DIR) if v[:1].isdigit()]
+        if installed:
+            version = max(installed, key=lambda v: tuple(int(p) for p in v.split(".") if p.isdigit()))
+    except FileNotFoundError:
+        pass  # Claude Code installed elsewhere; the fallback version still identifies the CLI.
+    return {"User-Agent": f"claude-cli/{version} (external, cli)", "x-app": "cli"}
+
+
+def claude_reset_grants(cedar: dict | None) -> dict:
+    """Free usage-limit resets the account can redeem in Claude Code, and when
+    the soonest-ending one lapses. None when the server did not report them."""
+    if not cedar or not cedar.get("eligible"):
+        return {"reset_credits": None, "reset_credits_expire_at": None}
+    import datetime
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    live = [
+        g
+        for g in cedar.get("grants") or []
+        if not g.get("paused")
+        and (g.get("resets_left") or 0) > 0
+        and (
+            not g.get("ends_at")
+            or datetime.datetime.fromisoformat(g["ends_at"].replace("Z", "+00:00")) > now
+        )
+    ]
+    ends = [g["ends_at"] for g in live if g.get("ends_at")]
+    return {
+        "reset_credits": sum(g["resets_left"] for g in live),
+        "reset_credits_expire_at": iso_utc(min(ends, key=lambda e: iso_utc(e))) if ends else None,
+    }
+
+
+LIMIT_LABELS = {"session": "5-hour", "weekly_all": "Weekly", "weekly_scoped": "Weekly"}
+
+
+def claude_limits(data: dict) -> list[dict]:
+    """Normalise the response's `limits` list, which carries model-scoped
+    limits (Fable and the like) that the fixed five_hour/seven_day keys omit."""
+    raw = data.get("limits")
+    if not raw:
+        # Responses without the list still carry the two fixed windows.
+        raw = [
+            {"kind": kind, "percent": w.get("utilization"), "resets_at": w.get("resets_at")}
+            for kind, w in (
+                ("session", data.get("five_hour") or {}),
+                ("weekly_all", data.get("seven_day") or {}),
+            )
+        ]
+
+    out = []
+    for item in raw:
+        if item.get("percent") is None:
+            continue
+        kind = item.get("kind") or "unknown"
+        scope = limit_scope(item.get("scope"))
+        if scope is None and kind.endswith("_scoped"):
+            # Never let a model limit pass as account-wide: it would set the peak.
+            scope = "Other model"
+        label = LIMIT_LABELS.get(kind, kind.replace("_", " ").capitalize())
+        out.append(
+            {
+                "kind": kind,
+                "label": f"{scope} {label.lower()}" if scope else label,
+                "scope": scope,
+                "percent": float(item["percent"]),
+                "severity": item.get("severity"),
+                "resets_at": iso_utc(item.get("resets_at")),
+            }
+        )
+    return out
+
+
+def limit_scope(scope: dict | None) -> str | None:
+    """Name the model or surface a scoped limit applies to."""
+    if not scope:
+        return None
+    for key in ("model", "surface"):
+        value = scope.get(key)
+        if isinstance(value, dict) and (value.get("display_name") or value.get("id")):
+            return value.get("display_name") or value["id"]
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def claude_spend(spend: dict | None) -> dict | None:
+    """Extra-usage credits: what was spent against the monthly cap."""
+    if not spend:
+        return None
+    used = spend.get("used") or {}
+    limit = spend.get("limit") or {}
+    return {
+        "used": money(used),
+        "limit": money(limit),
+        "currency": used.get("currency") or limit.get("currency"),
+        "percent": spend.get("percent"),
+        "enabled": bool(spend.get("enabled")),
+        "disabled_reason": spend.get("disabled_reason"),
+    }
+
+
+def money(amount: dict) -> float | None:
+    if amount.get("amount_minor") is None:
+        return None
+    return amount["amount_minor"] / 10 ** amount.get("exponent", 2)
+
+
+def iso_utc(stamp: str | float | None) -> str | None:
+    """ISO 8601 in UTC without fractional seconds, from an ISO string or epoch
+    seconds. One format keeps every consumer's date parsing trivial."""
+    if stamp is None or stamp == "":
+        return None
+    import datetime
+
+    if isinstance(stamp, (int, float)):
+        when = datetime.datetime.fromtimestamp(stamp, tz=datetime.timezone.utc)
+    else:
+        when = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return when.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def codex_usage(codex_home: str) -> dict:
+    """Drive the app-server over stdio for one CODEX_HOME."""
+    if not codex_home:
+        return {"note": "no codex home"}
+    if not os.path.exists(os.path.join(codex_home, "auth.json")):
+        return {"note": "not logged in"}
+
+    env = dict(os.environ, CODEX_HOME=codex_home)
+    try:
+        proc = subprocess.Popen(
+            ["codex", "app-server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        return {"note": "codex not installed"}
+
+    def send(obj: dict) -> None:
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+
+    result: dict = {"note": "no response"}
+    killer = threading.Timer(CODEX_TIMEOUT_S, proc.kill)
+    killer.start()
+    try:
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {
+                        "name": "agent-usage",
+                        "title": "agent-usage",
+                        "version": "1.0.0",
+                    }
+                },
+            }
+        )
+        send({"jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read", "params": {}})
+
+        for line in proc.stdout:
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if msg.get("id") != 2:
+                continue
+            if msg.get("error"):
+                result = {"note": str(msg["error"].get("message", "error"))[:40]}
+                break
+            payload = msg.get("result") or {}
+            limits = payload.get("rateLimits") or {}
+            result = {
+                "limits": codex_limits(payload),
+                **codex_plan_label(limits.get("planType")),
+                **reset_credits(payload.get("rateLimitResetCredits")),
+            }
+            break
+    except (BrokenPipeError, OSError):
+        result = {"note": "app-server failed"}
+    finally:
+        killer.cancel()
+        proc.kill()
+    return result
+
+
+DAY_MINUTES = 1440
+
+CODEX_PLAN_LABELS = {"prolite": "Pro Lite", "pro": "Pro", "plus": "Plus", "free": "Free", "go": "Go"}
+
+
+def codex_plan_label(plan_type: str | None) -> dict:
+    """ChatGPT plan types as labels: "prolite" is Pro Lite; business seats
+    arrive as "self_serve_business_<seat>" and become Business · <seat>."""
+    if not plan_type:
+        return {"plan": None, "plan_detail": None}
+    for prefix, label in (("self_serve_business_", "Business"), ("business_", "Business"), ("team_", "Team")):
+        if plan_type.startswith(prefix):
+            seat = plan_type[len(prefix):]
+            return {"plan": label, "plan_detail": CODEX_PLAN_LABELS.get(seat, seat.replace("_", " ").title())}
+    return {"plan": CODEX_PLAN_LABELS.get(plan_type, plan_type.replace("_", " ").title()), "plan_detail": None}
+
+
+def reset_credits(summary: dict | None) -> dict:
+    """Free resets of a used-up window that the account can redeem, and when
+    the soonest-expiring one lapses. `credits` may be capped or null, so the
+    count comes from `availableCount`, never from the list's length."""
+    summary = summary or {}
+    expiries = [
+        c["expiresAt"]
+        for c in summary.get("credits") or []
+        if c.get("status") == "available" and c.get("expiresAt")
+    ]
+    return {
+        "reset_credits": summary.get("availableCount"),
+        "reset_credits_expire_at": iso_utc(min(expiries)) if expiries else None,
+    }
+
+
+WEEK_MINUTES = 7 * DAY_MINUTES
+
+
+def window_label(minutes: int) -> str:
+    """Name a Codex window by its real length: 300 → 5-hour, 10080 → Weekly."""
+    if minutes == WEEK_MINUTES:
+        return "Weekly"
+    if minutes and minutes % DAY_MINUTES == 0:
+        return f"{minutes // DAY_MINUTES}-day"
+    if minutes and minutes % 60 == 0:
+        return f"{minutes // 60}-hour"
+    return f"{minutes}-minute" if minutes else "Window"
+
+
+def codex_limits(payload: dict) -> list[dict]:
+    """Map Codex windows onto the same shape as Claude's limits.
+
+    `rateLimitsByLimitId` holds the account-wide `codex` bucket plus any
+    model-specific ones; older servers send only `rateLimits`. Codex names
+    windows by duration only; 5 hour is 300 minutes, weekly 10080."""
+    buckets = payload.get("rateLimitsByLimitId") or {"codex": payload.get("rateLimits") or {}}
+    out = []
+    for limit_id, bucket in buckets.items():
+        bucket = bucket or {}
+        scope = None if limit_id == "codex" else bucket.get("limitName") or limit_id
+        for w in (bucket.get("primary"), bucket.get("secondary")):
+            if not w or w.get("usedPercent") is None:
+                continue
+            minutes = w.get("windowDurationMins") or 0
+            short = minutes <= DAY_MINUTES
+            kind = "session" if short else "weekly"
+            label = window_label(minutes)
+            out.append(
+                {
+                    "kind": f"{kind}_scoped" if scope else ("session" if short else "weekly_all"),
+                    "label": f"{scope} {label.lower()}" if scope else label,
+                    "scope": scope,
+                    "percent": float(w["usedPercent"]),
+                    "severity": None,
+                    "resets_at": iso_utc(w.get("resetsAt")),
+                }
+            )
+    return out
+
+
+def human_delta(seconds: float) -> str:
+    if seconds <= 0:
+        return "now"
+    hours, rem = divmod(int(seconds), 3600)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days}d{hours}h"
+    minutes = rem // 60
+    return f"{hours}h{minutes:02d}m" if hours else f"{minutes}m"
+
+
+def until_iso(stamp: str | None) -> str:
+    if not stamp:
+        return ""
+    try:
+        import datetime
+
+        when = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        return human_delta(when.timestamp() - time.time())
+    except ValueError:
+        return "?"  # Unparseable timestamp: the table cell says so instead of lying.
+
+
+def bar(pct: float | None, width: int = 10) -> str:
+    if pct is None:
+        return " " * width
+    filled = min(width, max(0, round(pct / 100 * width)))
+    return "█" * filled + "░" * (width - filled)
+
+
+JSON_SCHEMA_VERSION = 1
+
+
+def guarded(fetch, *args) -> dict:
+    """Run one account's fetch; an unexpected error becomes that account's
+    note (traceback on stderr) instead of failing every account."""
+    try:
+        return fetch(*args)
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
+        return {"note": f"internal error: {type(exc).__name__}"}
+
+
+def collect(accts: list[dict]) -> list[dict]:
+    """Usage for every configured account: one entry per account, a `claude`
+    result and, when a Codex home is set, a `codex` result. A result holding
+    `note` instead of `limits` could not be read.
+
+    Every call runs in parallel, so the slowest account — not the sum of all
+    of them — sets the run time the app has to wait for."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not accts:
+        return []
+    with ThreadPoolExecutor(max_workers=2 * len(accts)) as pool:
+        claude = [
+            pool.submit(guarded, claude_usage, a["claude_dir"]) if a["claude_dir"] else None
+            for a in accts
+        ]
+        codex = [
+            pool.submit(guarded, codex_usage, a["codex_home"]) if a["codex_home"] else None
+            for a in accts
+        ]
+        out = []
+        for acct, cu_future, xu_future in zip(accts, claude, codex):
+            cu = cu_future.result() if cu_future else None
+            if cu and cu.get("note") == "token stale":
+                # Claude Code refreshes the token whenever that profile runs.
+                cu["note"] = f"token stale — run: cc {acct['slot']}"
+            out.append(
+                {
+                    "slot": acct["slot"],
+                    "label": acct["label"],
+                    "claude": cu,
+                    "codex": xu_future.result() if xu_future else None,
+                }
+            )
+    return out
+
+
+def print_json(entries: list[dict]) -> None:
+    print(
+        json.dumps(
+            {
+                "version": JSON_SCHEMA_VERSION,
+                "generated_at": iso_utc(time.time()),
+                "accounts": entries,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def print_table(entries: list[dict]) -> None:
+    # Bar (10) + space + "100%" + space + countdown such as "23h59m" (6).
+    width = 22
+
+    def cell(limit: dict | None) -> str:
+        if limit is None:
+            return "—".ljust(width)
+        left = until_iso(limit["resets_at"])
+        return f"{bar(limit['percent'])} {int(limit['percent']):>3}% {left:<6}"[:width].ljust(width)
+
+    def pick(limits: list[dict], kind: str) -> dict | None:
+        return next((limit for limit in limits if limit["kind"] == kind), None)
+
+    print(f"{'account':<12} {'agent':<7} {'5 hour':<22} {'weekly':<22} note")
+    for entry in entries:
+        for agent in ("claude", "codex"):
+            usage = entry[agent]
+            if usage is None:
+                continue
+            if "note" in usage:
+                print(f"{entry['label']:<12} {agent:<7} {cell(None)} {cell(None)} {usage['note']}")
+                continue
+            limits = usage["limits"]
+            # Model-scoped weekly limits (Fable and the like) have no column of their own.
+            scoped = [
+                f"{limit['scope']} {int(limit['percent'])}%"
+                for limit in limits
+                if limit["kind"] == "weekly_scoped"
+            ]
+            if usage.get("reset_credits"):
+                count = usage["reset_credits"]
+                scoped.append(f"{count} free reset{'' if count == 1 else 's'}")
+            plan = " · ".join(p for p in (usage.get("plan"), usage.get("plan_detail")) if p)
+            note = ", ".join([plan] + scoped if plan else scoped)
+            print(
+                f"{entry['label']:<12} {agent:<7} {cell(pick(limits, 'session'))} "
+                f"{cell(pick(limits, 'weekly_all'))} {note}"
+            )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Claude Code and Codex usage limits for every account.")
+    parser.add_argument("--json", action="store_true", help="print one JSON document instead of the table")
+    parser.add_argument("--config", metavar="FILE", help="subscriptions JSON; default: accounts.conf via cc-conf")
+    args = parser.parse_args()
+
+    try:
+        entries = collect(accounts_from_config(args.config) if args.config else accounts())
+    except ConfigError as exc:
+        print(f"agent-usage: {exc}", file=sys.stderr)
+        return 2
+    if not entries:
+        hint = f"add a subscription to {args.config}" if args.config else "run: ~/.agents/setup.sh accounts"
+        print(f"no accounts configured — {hint}", file=sys.stderr)
+        return 1
+    if args.json:
+        print_json(entries)
+    else:
+        print_table(entries)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

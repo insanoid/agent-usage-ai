@@ -7,12 +7,13 @@ struct PanelFooter: View {
     let store: UsageStore
     let now: Date
 
+    @Environment(\.openWindow) private var openWindow
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            Divider()
+            Hairline()
             HStack(spacing: Spacing.md) {
                 Button {
                     Task { await store.refresh() }
@@ -40,6 +41,16 @@ struct PanelFooter: View {
                     .onChange(of: launchAtLogin) { _, enabled in
                         setLaunchAtLogin(enabled)
                     }
+                Button {
+                    openWindow(id: SettingsView.windowID)
+                    // A menu bar app is never frontmost on its own.
+                    NSApp.activate()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(",")
+                .help("Subscriptions…")
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.borderless)
                     .keyboardShortcut("q")

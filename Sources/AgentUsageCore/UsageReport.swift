@@ -41,14 +41,15 @@ public struct UsageReport: Codable, Sendable, Equatable {
 public struct Account: Codable, Sendable, Equatable, Identifiable {
     public let slot: String
     public let label: String
-    public let claude: AgentUsage
+    /// Nil for an account with only a Codex subscription.
+    public let claude: AgentUsage?
     public let codex: AgentUsage?
 
     public var id: String {
         slot
     }
 
-    public init(slot: String, label: String, claude: AgentUsage, codex: AgentUsage?) {
+    public init(slot: String, label: String, claude: AgentUsage?, codex: AgentUsage?) {
         self.slot = slot
         self.label = label
         self.claude = claude

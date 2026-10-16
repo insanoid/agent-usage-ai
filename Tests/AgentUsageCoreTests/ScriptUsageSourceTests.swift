@@ -70,12 +70,17 @@ struct ProcessRunnerTests {
     }
 }
 
-/// Runs the real `~/.agents/bin/agent-usage`, which reads credentials and
-/// calls the network. Opt in with `AGENT_USAGE_LIVE=1 swift test`.
+/// Runs the repo's bin/agent-usage with the sample configuration, which reads
+/// real credentials and calls the network. Opt in with `AGENT_USAGE_LIVE=1 swift test`.
 struct LiveScriptTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["AGENT_USAGE_LIVE"] == "1"))
     func decodesRealOutput() async throws {
-        let report = try await ScriptUsageSource().fetch()
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let report = try await ScriptUsageSource(
+            scriptURL: root.appending(path: "bin/agent-usage"),
+            configURL: root.appending(path: "config/subscriptions.json")
+        ).fetch()
         #expect(!report.accounts.isEmpty)
     }
 }

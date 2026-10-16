@@ -55,7 +55,7 @@ private struct ProviderSection: View {
             VStack(alignment: .leading, spacing: style.profileGap) {
                 ForEach(entries) { entry in
                     if entry.id != entries.first?.id {
-                        Divider()
+                        Hairline()
                     }
                     ProfileView(name: entry.account.displayName, usage: entry.usage, now: now, style: style)
                 }

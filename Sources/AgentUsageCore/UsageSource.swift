@@ -6,7 +6,9 @@ public protocol UsageSource: Sendable {
 }
 
 /// Reads usage by running `agent-usage --json`, so the CLI and this app share
-/// one implementation of the Keychain, HTTP and Codex calls.
+/// one implementation of the Keychain, HTTP and Codex calls. The app ships the
+/// script in its bundle and runs it with the system Python that Xcode and the
+/// Command Line Tools install.
 public struct ScriptUsageSource: UsageSource {
     /// Codex's app-server call alone may take 25s per account.
     public static let timeout: Duration = .seconds(90)
@@ -15,17 +17,25 @@ public struct ScriptUsageSource: UsageSource {
     public static let scriptPathDefaultsKey = "scriptPath"
 
     public let scriptURL: URL
+    /// The subscriptions file passed as `--config`; nil lets the script fall
+    /// back to accounts.conf.
+    public let configURL: URL?
 
-    public init(scriptURL: URL = ScriptUsageSource.configuredScriptURL()) {
+    public init(scriptURL: URL = ScriptUsageSource.configuredScriptURL(), configURL: URL? = nil) {
         self.scriptURL = scriptURL
+        self.configURL = configURL
     }
 
-    public static func configuredScriptURL(defaults: UserDefaults = .standard) -> URL {
+    /// The `scriptPath` override when set, else the copy in the app bundle.
+    public static func configuredScriptURL(
+        defaults: UserDefaults = .standard,
+        bundle: Bundle = .main
+    ) -> URL {
         if let path = defaults.string(forKey: scriptPathDefaultsKey), !path.isEmpty {
             return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".agents/bin/agent-usage")
+        return bundle.url(forResource: "agent-usage", withExtension: nil)
+            ?? bundle.bundleURL.appending(path: "Contents/Resources/agent-usage")
     }
 
     public func fetch() async throws -> UsageReport {
@@ -35,7 +45,7 @@ public struct ScriptUsageSource: UsageSource {
 
         let output = try await ProcessRunner.run(
             executable: URL(fileURLWithPath: "/usr/bin/env"),
-            arguments: ["python3", scriptURL.path, "--json"],
+            arguments: ["python3", scriptURL.path, "--json"] + (configURL.map { ["--config", $0.path] } ?? []),
             environment: Self.environment(),
             timeout: Self.timeout
         )

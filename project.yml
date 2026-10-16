@@ -1,17 +1,23 @@
+# Generated into AgentUsage.xcodeproj by scripts/build-app.sh, which sets
+# AGENT_USAGE_TEAM (signing team ID) and AGENT_USAGE_BUNDLE_PREFIX
+# (reverse-DNS prefix such as com.example). Bundle IDs and the App Group
+# derive from both, so anyone can build with their own Apple ID.
 name: AgentUsage
 options:
-  bundleIdPrefix: com.karthikeyaudupa
+  bundleIdPrefix: ${AGENT_USAGE_BUNDLE_PREFIX}
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
 settings:
   base:
-    DEVELOPMENT_TEAM: UYGU8PDBPS
+    DEVELOPMENT_TEAM: ${AGENT_USAGE_TEAM}
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "0.3.0"
+    CURRENT_PROJECT_VERSION: "3"
     ENABLE_HARDENED_RUNTIME: YES
+    # Team-prefixed, which macOS accepts without a provisioning profile.
+    AGENT_USAGE_APP_GROUP: ${AGENT_USAGE_TEAM}.${AGENT_USAGE_BUNDLE_PREFIX}.agent-usage
 packages:
   AgentUsageKit:
     path: .
@@ -19,7 +25,13 @@ targets:
   AgentUsage:
     type: application
     platform: macOS
-    sources: [App/AgentUsage]
+    sources:
+      - App/AgentUsage
+      # The usage script and the default subscriptions ship inside the app.
+      - path: bin/agent-usage
+        buildPhase: resources
+      - path: config/subscriptions.json
+        buildPhase: resources
     dependencies:
       - package: AgentUsageKit
         product: AgentUsageCore
@@ -34,14 +46,15 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.developer-tools
+        AgentUsageAppGroup: $(AGENT_USAGE_APP_GROUP)
     entitlements:
       path: App/AgentUsage/AgentUsage.entitlements
       properties:
         com.apple.security.application-groups:
-          - UYGU8PDBPS.com.karthikeyaudupa.agent-usage
+          - $(AGENT_USAGE_APP_GROUP)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.karthikeyaudupa.agent-usage
+        PRODUCT_BUNDLE_IDENTIFIER: ${AGENT_USAGE_BUNDLE_PREFIX}.agent-usage
   AgentUsageWidget:
     type: app-extension
     platform: macOS
@@ -53,12 +66,14 @@ targets:
         product: AgentUsageUI
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
     info:
       path: App/AgentUsageWidget/Info.plist
       properties:
         CFBundleDisplayName: Agent Usage
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AgentUsageAppGroup: $(AGENT_USAGE_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -66,7 +81,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.application-groups:
-          - UYGU8PDBPS.com.karthikeyaudupa.agent-usage
+          - $(AGENT_USAGE_APP_GROUP)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.karthikeyaudupa.agent-usage.widget
+        PRODUCT_BUNDLE_IDENTIFIER: ${AGENT_USAGE_BUNDLE_PREFIX}.agent-usage.widget

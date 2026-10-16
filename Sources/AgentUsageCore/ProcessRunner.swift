@@ -1,14 +1,14 @@
 import Foundation
 
 /// Runs a child process to completion, collecting its output, with a deadline.
-enum ProcessRunner {
-    struct Output: Sendable {
-        let status: Int32
-        let stdout: Data
-        let stderr: Data
+public enum ProcessRunner {
+    public struct Output: Sendable {
+        public let status: Int32
+        public let stdout: Data
+        public let stderr: Data
     }
 
-    static func run(
+    public static func run(
         executable: URL,
         arguments: [String],
         environment: [String: String],

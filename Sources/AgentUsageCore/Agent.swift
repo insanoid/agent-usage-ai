@@ -1,5 +1,5 @@
 /// The coding agents a report covers, in panel order.
-public enum Agent: String, CaseIterable, Sendable, Identifiable {
+public enum Agent: String, CaseIterable, Codable, Sendable, Identifiable {
     case claude
     case codex
 

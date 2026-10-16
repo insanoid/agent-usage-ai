@@ -5,11 +5,21 @@ import WidgetKit
 
 @main
 struct AgentUsageApp: App {
-    @State private var store = UsageStore(
-        source: ScriptUsageSource(),
-        cached: WidgetBridge.loadCached(),
-        onReport: WidgetBridge.publish
-    )
+    @State private var store: UsageStore
+    @State private var subscriptions: SubscriptionsModel
+
+    init() {
+        let store = UsageStore(
+            source: ScriptUsageSource(configURL: SubscriptionsFile.standard().url),
+            cached: WidgetBridge.loadCached(),
+            onReport: WidgetBridge.publish
+        )
+        _store = State(initialValue: store)
+        // Installs the default configuration before the first refresh reads it.
+        _subscriptions = State(initialValue: SubscriptionsModel {
+            Task { await store.refresh() }
+        })
+    }
 
     var body: some Scene {
         MenuBarExtra {
@@ -18,6 +28,11 @@ struct AgentUsageApp: App {
             MenuBarLabel(store: store)
         }
         .menuBarExtraStyle(.window)
+
+        Window("Agent Usage", id: SettingsView.windowID) {
+            SettingsView(model: subscriptions, store: store)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
@@ -40,7 +55,7 @@ enum WidgetBridge {
     @MainActor
     static func publish(_ report: UsageReport) {
         guard let cache = ReportCache.shared() else {
-            logger.error("no App Group container for \(ReportCache.appGroup, privacy: .public); widget not updated")
+            logger.info("no App Group in this build; widget not updated")
             return
         }
         do {

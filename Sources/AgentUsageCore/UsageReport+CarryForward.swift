@@ -13,7 +13,7 @@ public extension UsageReport {
             return Account(
                 slot: account.slot,
                 label: account.label,
-                claude: Self.keep(account.claude, else: before.claude, now: now),
+                claude: account.claude.map { Self.keep($0, else: before.claude, now: now) },
                 codex: account.codex.map { Self.keep($0, else: before.codex, now: now) }
             )
         }
