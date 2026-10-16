@@ -1,0 +1,72 @@
+name: AgentUsage
+options:
+  bundleIdPrefix: com.karthikeyaudupa
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: UYGU8PDBPS
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
+    ENABLE_HARDENED_RUNTIME: YES
+packages:
+  AgentUsageKit:
+    path: .
+targets:
+  AgentUsage:
+    type: application
+    platform: macOS
+    sources: [App/AgentUsage]
+    dependencies:
+      - package: AgentUsageKit
+        product: AgentUsageCore
+      - package: AgentUsageKit
+        product: AgentUsageUI
+      - target: AgentUsageWidget
+    info:
+      path: App/AgentUsage/Info.plist
+      properties:
+        CFBundleDisplayName: Agent Usage
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.developer-tools
+    entitlements:
+      path: App/AgentUsage/AgentUsage.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - UYGU8PDBPS.com.karthikeyaudupa.agent-usage
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.karthikeyaudupa.agent-usage
+  AgentUsageWidget:
+    type: app-extension
+    platform: macOS
+    sources: [App/AgentUsageWidget]
+    dependencies:
+      - package: AgentUsageKit
+        product: AgentUsageCore
+      - package: AgentUsageKit
+        product: AgentUsageUI
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: App/AgentUsageWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Agent Usage
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: App/AgentUsageWidget/AgentUsageWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - UYGU8PDBPS.com.karthikeyaudupa.agent-usage
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.karthikeyaudupa.agent-usage.widget
