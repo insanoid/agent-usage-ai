@@ -37,7 +37,7 @@ jobs:
       - name: Package
         env:
           AGENT_USAGE_TEAM: ""
-          AGENT_USAGE_BUNDLE_PREFIX: com.karthikeyaudupa
+          AGENT_USAGE_BUNDLE_PREFIX: io.github.insanoid
         run: ./scripts/package.sh
 
       - uses: actions/upload-artifact@v4

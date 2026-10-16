@@ -13,7 +13,10 @@ AgentUsage menu bar app and other consumers.
 Sources, both authoritative:
   Claude Code  GET https://api.anthropic.com/api/oauth/usage with the profile's
                OAuth access token (needs the user:profile scope, which an
-               interactive /login token has).
+               interactive /login token has); the plan from /api/oauth/profile.
+               With --free-resets, also the free usage-limit resets, which the
+               server only reports to Claude Code; the request then identifies
+               as Claude Code. Undocumented, so off unless asked for.
   Codex        the app-server method account/rateLimits/read, run once per
                CODEX_HOME. Same numbers the Codex TUI shows.
 
@@ -41,9 +44,12 @@ CONF = os.environ.get("CC_ACCOUNTS_CONF") or os.path.expanduser(
     "~/.config/claude-accounts/accounts.conf"
 )
 CC_CONF = os.path.expanduser("~/.agents/bin/cc-conf")
-# `cedar_ember=1` adds the free usage-limit resets ("grants") to the response.
-# The server only reports them to a Claude Code client, hence CLIENT_HEADERS.
-USAGE_URL = "https://api.anthropic.com/api/oauth/usage?cedar_ember=1"
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+# Opt-in (--free-resets): adds the free usage-limit resets ("grants") to the
+# response. The server only reports them to Claude Code, so the request then
+# identifies as Claude Code (client_headers). Undocumented; off by default.
+FREE_RESETS_QUERY = "?cedar_ember=1"
+FREE_RESETS_ENV = "AGENT_USAGE_FREE_RESETS"
 CLAUDE_VERSIONS_DIR = os.path.expanduser("~/.local/share/claude/versions")
 HTTP_TOO_MANY_REQUESTS = 429
 # Used when no installed Claude Code version can be found.
@@ -175,17 +181,17 @@ def keychain_credential(config_dir: str) -> str | None:
     return None
 
 
-def claude_usage(config_dir: str) -> dict:
+def claude_usage(config_dir: str, free_resets: bool = False) -> dict:
     token, note = claude_token(config_dir)
     if not token:
         return {"note": note}
 
     req = urllib.request.Request(
-        USAGE_URL,
+        USAGE_URL + (FREE_RESETS_QUERY if free_resets else ""),
         headers={
             "Authorization": f"Bearer {token}",
             "anthropic-beta": "oauth-2025-04-20",
-            **client_headers(),
+            **(client_headers() if free_resets else {}),
         },
     )
     try:
@@ -231,7 +237,7 @@ def claude_plan(token: str, config_dir: str) -> dict:
     if org is None:
         req = urllib.request.Request(
             PROFILE_URL,
-            headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20", **client_headers()},
+            headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20"},
         )
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
@@ -276,8 +282,8 @@ def claude_plan_label(org_type: str | None, tier: str | None) -> dict:
 
 def client_headers() -> dict:
     """Identify as the installed Claude Code, the only surface the server
-    reports reset grants to. Undocumented: if it stops working, the grants
-    simply come back as ineligible and the rest of the response is unchanged."""
+    reports reset grants to. Sent only with --free-resets. Undocumented: if it
+    stops working, the grants come back ineligible and nothing else changes."""
     version = FALLBACK_CLAUDE_VERSION
     try:
         installed = [v for v in os.listdir(CLAUDE_VERSIONS_DIR) if v[:1].isdigit()]
@@ -596,7 +602,7 @@ def guarded(fetch, *args) -> dict:
         return {"note": f"internal error: {type(exc).__name__}"}
 
 
-def collect(accts: list[dict]) -> list[dict]:
+def collect(accts: list[dict], free_resets: bool = False) -> list[dict]:
     """Usage for every configured account: one entry per account, a `claude`
     result and, when a Codex home is set, a `codex` result. A result holding
     `note` instead of `limits` could not be read.
@@ -609,7 +615,7 @@ def collect(accts: list[dict]) -> list[dict]:
         return []
     with ThreadPoolExecutor(max_workers=2 * len(accts)) as pool:
         claude = [
-            pool.submit(guarded, claude_usage, a["claude_dir"]) if a["claude_dir"] else None
+            pool.submit(guarded, claude_usage, a["claude_dir"], free_resets) if a["claude_dir"] else None
             for a in accts
         ]
         codex = [
@@ -690,10 +696,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Claude Code and Codex usage limits for every account.")
     parser.add_argument("--json", action="store_true", help="print one JSON document instead of the table")
     parser.add_argument("--config", metavar="FILE", help="subscriptions JSON; default: accounts.conf via cc-conf")
+    parser.add_argument(
+        "--free-resets",
+        action="store_true",
+        default=os.environ.get(FREE_RESETS_ENV) == "1",
+        help=(
+            "also read Claude's free usage-limit resets; the request then identifies "
+            f"as Claude Code (undocumented API). Or set {FREE_RESETS_ENV}=1"
+        ),
+    )
     args = parser.parse_args()
 
     try:
-        entries = collect(accounts_from_config(args.config) if args.config else accounts())
+        accts = accounts_from_config(args.config) if args.config else accounts()
+        entries = collect(accts, free_resets=args.free_resets)
     except ConfigError as exc:
         print(f"agent-usage: {exc}", file=sys.stderr)
         return 2

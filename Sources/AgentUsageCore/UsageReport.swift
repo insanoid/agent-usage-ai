@@ -152,4 +152,20 @@ public struct Spend: Codable, Sendable, Equatable {
     public let percent: Double?
     public let enabled: Bool
     public let disabledReason: String?
+
+    public init(
+        used: Double?,
+        limit: Double?,
+        currency: String?,
+        percent: Double?,
+        enabled: Bool,
+        disabledReason: String? = nil
+    ) {
+        self.used = used
+        self.limit = limit
+        self.currency = currency
+        self.percent = percent
+        self.enabled = enabled
+        self.disabledReason = disabledReason
+    }
 }

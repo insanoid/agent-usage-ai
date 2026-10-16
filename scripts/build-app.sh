@@ -10,8 +10,8 @@
 #   AGENT_USAGE_INSTALL_DIR    where --install puts the app; /Applications.
 #   AGENT_USAGE_AUTO_INSTALL   1 to install after every team-signed build,
 #                              as if --install were passed.
-# scripts/install.sh works the first two out for you. scripts/local.env, if
-# present (it is gitignored), sets any of these for this machine.
+# Unset, the first two are worked out by scripts/signing.sh. scripts/local.env,
+# if present (it is gitignored), sets any of these for this machine.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,9 +19,8 @@ if [[ -f scripts/local.env ]]; then
   # shellcheck disable=SC1091
   source scripts/local.env
 fi
-: "${AGENT_USAGE_TEAM=UYGU8PDBPS}"
-: "${AGENT_USAGE_BUNDLE_PREFIX:=com.karthikeyaudupa}"
-export AGENT_USAGE_TEAM AGENT_USAGE_BUNDLE_PREFIX
+# shellcheck source=scripts/signing.sh
+source scripts/signing.sh
 
 derived="build/DerivedData"
 app="$derived/Build/Products/Release/AgentUsage.app"

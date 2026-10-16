@@ -265,7 +265,7 @@ def test_json_output_for_a_config(au, tmp_path, monkeypatch):
             {"name": "Solo", "provider": "codex", "dir": "/s/codex"},
         ],
     )
-    monkeypatch.setattr(au, "claude_usage", lambda d: {"limits": [], "plan": "Pro", "dir": d})
+    monkeypatch.setattr(au, "claude_usage", lambda d, free_resets=False: {"limits": [], "plan": "Pro", "dir": d})
     monkeypatch.setattr(au, "codex_usage", lambda d: {"limits": [], "dir": d})
     monkeypatch.setattr(sys, "argv", ["agent-usage", "--json", "--config", path])
     out = io.StringIO()
@@ -297,3 +297,53 @@ def test_human_delta(au):
     assert au.human_delta(3 * 3600 + 7 * 60) == "3h07m"
     assert au.human_delta(4 * 86400 + 3 * 3600) == "4d3h"
     assert time.time() > 0
+
+
+# --- free resets are opt-in ------------------------------------------------------
+
+
+class FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+def capture_usage_request(au, monkeypatch, free_resets):
+    seen = {}
+
+    def urlopen(req, timeout):
+        seen["url"] = req.full_url
+        seen["headers"] = {k.lower(): v for k, v in req.header_items()}
+        return FakeResponse(json.dumps({"limits": []}).encode())
+
+    monkeypatch.setattr(au, "claude_token", lambda _: ("token", ""))
+    monkeypatch.setattr(au, "claude_plan", lambda *_: {"plan": None, "plan_detail": None})
+    monkeypatch.setattr(au.urllib.request, "urlopen", urlopen)
+    au.claude_usage("/w/claude", free_resets=free_resets)
+    return seen
+
+
+def test_default_request_does_not_identify_as_claude_code(au, monkeypatch):
+    seen = capture_usage_request(au, monkeypatch, free_resets=False)
+    assert "cedar_ember" not in seen["url"]
+    assert "x-app" not in seen["headers"]
+    assert "claude-cli" not in seen["headers"].get("user-agent", "")
+
+
+def test_free_resets_opt_in_identifies_as_claude_code(au, monkeypatch):
+    seen = capture_usage_request(au, monkeypatch, free_resets=True)
+    assert seen["url"].endswith("?cedar_ember=1")
+    assert seen["headers"]["x-app"] == "cli"
+    assert seen["headers"]["user-agent"].startswith("claude-cli/")
+
+
+def test_free_resets_flag_reaches_every_claude_call(au, tmp_path, monkeypatch):
+    path = write_config(tmp_path, [{"name": "W", "provider": "claude", "dir": "/w/claude"}])
+    calls = []
+    monkeypatch.setattr(au, "claude_usage", lambda d, free_resets=False: calls.append(free_resets) or {"limits": []})
+    monkeypatch.setattr(sys, "argv", ["agent-usage", "--json", "--free-resets", "--config", path])
+    with redirect_stdout(io.StringIO()):
+        assert au.main() == 0
+    assert calls == [True]
