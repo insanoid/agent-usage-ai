@@ -41,21 +41,69 @@ final class SubscriptionsModel {
         if candidate.dir.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Choose its folder."
         }
-        let clash = subscriptions.contains { $0.provider == candidate.provider && $0.slot == candidate.slot }
+        // A subscription being edited may keep its own name.
+        let clash = subscriptions.contains {
+            $0.id != candidate.id && $0.provider == candidate.provider && $0.slot == candidate.slot
+        }
         return clash ? "There is already a \(candidate.provider.title) subscription called \(candidate.name)." : nil
     }
 
     func add(_ subscription: Subscription) {
-        var trimmed = subscription
-        trimmed.name = subscription.name.trimmingCharacters(in: .whitespaces)
-        trimmed.dir = subscription.dir.trimmingCharacters(in: .whitespaces)
-        subscriptions.append(trimmed)
+        subscriptions.append(Self.trimmed(subscription))
         save()
+    }
+
+    /// Replaces the subscription with the same id.
+    func update(_ subscription: Subscription) {
+        guard let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) else {
+            lastError = "Could not save \(subscription.name): it is no longer in \(file.url.path)."
+            return
+        }
+        subscriptions[index] = Self.trimmed(subscription)
+        save()
+    }
+
+    /// Moves a subscription one place up (`-1`) or down (`1`) among its
+    /// provider's, which is the order the panel and widget list them in.
+    func move(_ subscription: Subscription, by offset: Int) {
+        let siblings = subscriptions.indices.filter { subscriptions[$0].provider == subscription.provider }
+        guard let place = siblings.firstIndex(where: { subscriptions[$0].id == subscription.id }),
+              siblings.indices.contains(place + offset)
+        else { return }
+        subscriptions.swapAt(siblings[place], siblings[place + offset])
+        save()
+    }
+
+    /// Reads the file again, to pick up edits made outside the app. Refreshes
+    /// usage only when the subscriptions changed.
+    func reload() {
+        do {
+            let loaded = try file.load()
+            lastError = nil
+            // Ids are not compared: entries written by hand carry none, and
+            // get a fresh one on every load.
+            guard loaded.map(Self.content) != subscriptions.map(Self.content) else { return }
+            subscriptions = loaded
+            onChange()
+        } catch {
+            report(error, doing: "read")
+        }
     }
 
     func remove(_ subscription: Subscription) {
         subscriptions.removeAll { $0.id == subscription.id }
         save()
+    }
+
+    private static func trimmed(_ subscription: Subscription) -> Subscription {
+        var trimmed = subscription
+        trimmed.name = subscription.name.trimmingCharacters(in: .whitespaces)
+        trimmed.dir = subscription.dir.trimmingCharacters(in: .whitespaces)
+        return trimmed
+    }
+
+    private static func content(_ subscription: Subscription) -> [String] {
+        [subscription.name, subscription.provider.rawValue, subscription.dir]
     }
 
     private func save() {

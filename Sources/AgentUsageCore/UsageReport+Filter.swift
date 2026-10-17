@@ -9,7 +9,7 @@ public extension UsageReport {
             guard claude != nil || codex != nil else { return nil }
             return Account(slot: account.slot, label: account.label, claude: claude, codex: codex)
         }
-        return UsageReport(version: version, generatedAt: generatedAt, accounts: kept)
+        return UsageReport(version: version, generatedAt: generatedAt, accounts: kept, order: order)
     }
 
     static func profileID(agent: Agent, slot: String) -> String {

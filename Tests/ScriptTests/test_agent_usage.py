@@ -39,15 +39,47 @@ def test_config_pairs_subscriptions_by_name(au, tmp_path):
     )
     accounts = au.accounts_from_config(path)
     assert [a["slot"] for a in accounts] == ["work", "personal"]
-    assert accounts[0] == {"slot": "work", "label": "Work", "claude_dir": "/w/claude", "codex_home": "/w/codex"}
+    assert accounts[0] == {
+        "slot": "work",
+        "label": "Work",
+        "claude_dir": "/w/claude",
+        "codex_home": "/w/codex",
+        "claude_position": 0,
+        "codex_position": 0,
+    }
     assert accounts[1]["codex_home"] == ""
 
 
 def test_config_allows_a_codex_only_account(au, tmp_path):
     path = write_config(tmp_path, [{"name": "Solo", "provider": "codex", "dir": "/s/codex"}])
     assert au.accounts_from_config(path) == [
-        {"slot": "solo", "label": "Solo", "claude_dir": "", "codex_home": "/s/codex"}
+        {"slot": "solo", "label": "Solo", "claude_dir": "", "codex_home": "/s/codex", "codex_position": 0}
     ]
+
+
+def test_order_follows_each_providers_subscriptions(au, tmp_path):
+    path = write_config(
+        tmp_path,
+        [
+            {"name": "Work", "provider": "claude", "dir": "/w/claude"},
+            {"name": "Personal", "provider": "codex", "dir": "/p/codex"},
+            {"name": "Personal", "provider": "claude", "dir": "/p/claude"},
+            {"name": "Work", "provider": "codex", "dir": "/w/codex"},
+            {"name": "Solo", "provider": "codex", "dir": "/s/codex"},
+        ],
+    )
+    assert au.provider_order(au.accounts_from_config(path)) == {
+        "claude": ["work", "personal"],
+        "codex": ["personal", "work", "solo"],
+    }
+
+
+def test_order_without_positions_keeps_account_order(au):
+    accounts = [
+        {"slot": "a", "claude_dir": "/a", "codex_home": ""},
+        {"slot": "b", "claude_dir": "/b", "codex_home": "/b"},
+    ]
+    assert au.provider_order(accounts) == {"claude": ["a", "b"], "codex": ["b"]}
 
 
 def test_config_expands_home(au, tmp_path, monkeypatch):

@@ -9,11 +9,15 @@ public struct UsageReport: Codable, Sendable, Equatable {
     public let version: Int
     public let generatedAt: Date
     public let accounts: [Account]
+    /// Each agent's account slots in the order to list them, keyed by
+    /// `Agent.rawValue`. Nil, or an agent missing, keeps `accounts` order.
+    public let order: [String: [String]]?
 
-    public init(version: Int, generatedAt: Date, accounts: [Account]) {
+    public init(version: Int, generatedAt: Date, accounts: [Account], order: [String: [String]]? = nil) {
         self.version = version
         self.generatedAt = generatedAt
         self.accounts = accounts
+        self.order = order
     }
 
     /// Reads the script's output, or a report this app cached with `encoded()`.
