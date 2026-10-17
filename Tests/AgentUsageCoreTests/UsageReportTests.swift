@@ -66,6 +66,33 @@ struct AgentGroupingTests {
         #expect(report.usages(for: .codex).map(\.id) == ["work", "personal"])
     }
 
+    @Test func ordersEachAgentOnItsOwn() {
+        let accounts = [
+            Account(slot: "work", label: "work", claude: usage([1]), codex: usage([2])),
+            Account(slot: "personal", label: "personal", claude: usage([3]), codex: usage([4])),
+            Account(slot: "solo", label: "solo", claude: usage([5]), codex: nil),
+        ]
+        // "solo" is not in Claude's order, so it follows the named slots.
+        let report = UsageReport(
+            version: 1,
+            generatedAt: Date(),
+            accounts: accounts,
+            order: ["claude": ["personal", "work"], "codex": ["personal", "work"]]
+        )
+        #expect(report.usages(for: .claude).map(\.id) == ["personal", "work", "solo"])
+        #expect(report.usages(for: .codex).map(\.id) == ["personal", "work"])
+    }
+
+    @Test func decodesOrderAndKeepsItThroughTheCache() throws {
+        let json = Data("""
+        {"version": 1, "generated_at": "2026-01-01T00:00:00Z",
+         "accounts": [], "order": {"claude": ["b", "a"], "codex": []}}
+        """.utf8)
+        let report = try UsageReport.decode(json)
+        #expect(report.order == ["claude": ["b", "a"], "codex": []])
+        #expect(try UsageReport.decode(report.encoded()).order == report.order)
+    }
+
     @Test func peakSpansAgentsAndIgnoresScopedLimits() {
         let fable = Limit(kind: "weekly_scoped", label: "Fable weekly", scope: "Fable", percent: 100)
         let claude = AgentUsage(limits: [Limit(kind: "weekly_all", label: "Weekly", percent: 60), fable])

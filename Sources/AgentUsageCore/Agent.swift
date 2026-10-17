@@ -35,11 +35,20 @@ public extension Account {
 }
 
 public extension UsageReport {
-    /// Every account with a login for `agent`, in configuration order.
+    /// Every account with a login for `agent`, in that agent's configured
+    /// order. Accounts the order does not name follow, in report order.
     func usages(for agent: Agent) -> [AccountUsage] {
-        accounts.compactMap { account in
+        let entries = accounts.compactMap { account in
             account.usage(for: agent).map { AccountUsage(account: account, usage: $0) }
         }
+        guard let slots = order?[agent.rawValue] else { return entries }
+        let rank = Dictionary(slots.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return entries.enumerated()
+            .sorted { lhs, rhs in
+                (rank[lhs.element.account.slot] ?? slots.count + lhs.offset)
+                    < (rank[rhs.element.account.slot] ?? slots.count + rhs.offset)
+            }
+            .map(\.element)
     }
 
     /// The highest account-wide limit across every account and agent.

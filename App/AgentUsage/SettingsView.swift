@@ -17,6 +17,11 @@ struct SettingsView: View {
         }
         .frame(width: Self.width)
         .frame(minHeight: 420)
+        // Pick up edits made to the file outside the app.
+        .onAppear { model.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.reload()
+        }
     }
 }
 
@@ -64,7 +69,15 @@ struct SettingsContent: View {
             }
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                SectionHeader(title: "Subscriptions")
+                HStack {
+                    SectionHeader(title: "Subscriptions")
+                    Spacer()
+                    Button("Open file", action: openFile)
+                        .buttonStyle(.borderless)
+                        .font(Typography.small)
+                        .help("Open \((model.file.url.path as NSString).abbreviatingWithTildeInPath) in your editor. "
+                            + "Changes show here when you come back.")
+                }
                 Text("Each subscription is a provider and the folder its login lives in. "
                     + "Subscriptions with the same name show together in the panel.")
                     .font(Typography.secondary)
@@ -77,7 +90,12 @@ struct SettingsContent: View {
             }
 
             if isAdding {
-                AddSubscriptionForm(model: model, isPresented: $isAdding)
+                SubscriptionForm(
+                    model: model,
+                    draft: Subscription(name: "", provider: .claude, dir: Subscription.defaultDir(for: .claude)),
+                    isNew: true,
+                    isPresented: $isAdding
+                )
             } else {
                 Button {
                     isAdding = true
@@ -88,6 +106,15 @@ struct SettingsContent: View {
             }
         }
         .padding(Spacing.xxl + Spacing.xs)
+    }
+
+    /// Opens the file in the app registered for JSON, or shows it in Finder
+    /// when there is none.
+    private func openFile() {
+        let url = model.file.url
+        if !NSWorkspace.shared.open(url) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 }
 
@@ -110,7 +137,13 @@ private struct ProviderList: View {
                     if subscription.id != subscriptions.first?.id {
                         Hairline()
                     }
-                    SubscriptionRow(subscription: subscription, model: model, store: store)
+                    SubscriptionRow(
+                        subscription: subscription,
+                        model: model,
+                        store: store,
+                        position: subscriptions.firstIndex(of: subscription) ?? 0,
+                        count: subscriptions.count
+                    )
                 }
             }
         }
@@ -121,13 +154,33 @@ private struct SubscriptionRow: View {
     let subscription: Subscription
     let model: SubscriptionsModel
     let store: UsageStore
+    /// Where the row sits among its provider's, for the move buttons.
+    let position: Int
+    let count: Int
 
     @State private var isLoggingIn = false
     @State private var loginError: LoginError?
+    @State private var isEditing = false
 
     var body: some View {
+        if isEditing {
+            SubscriptionForm(model: model, draft: subscription, isNew: false, isPresented: $isEditing)
+        } else {
+            details
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HStack(alignment: .center, spacing: Spacing.md) {
+                if count > 1 {
+                    MoveButtons(
+                        canMoveUp: position > 0,
+                        canMoveDown: position < count - 1
+                    ) { offset in
+                        model.move(subscription, by: offset)
+                    }
+                }
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     HStack(spacing: Spacing.sm) {
                         Text(subscription.name)
@@ -151,6 +204,13 @@ private struct SubscriptionRow: View {
                 }
                 .disabled(isLoggingIn)
                 .help("Runs \(LoginCommand.shellCommand(for: subscription)); your browser opens to sign in.")
+                Button {
+                    isEditing = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(.borderless)
+                .help("Edit the name or folder.")
                 Button(role: .destructive) {
                     model.remove(subscription)
                 } label: {
@@ -204,6 +264,39 @@ private struct SubscriptionRow: View {
     }
 }
 
+/// A stacked up/down pair that reorders a subscription within its provider.
+private struct MoveButtons: View {
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let move: (Int) -> Void
+
+    private static let disabledOpacity = 0.3
+
+    var body: some View {
+        VStack(spacing: 0) {
+            button("chevron.up", offset: -1, enabled: canMoveUp, help: "Move up in the panel")
+            button("chevron.down", offset: 1, enabled: canMoveDown, help: "Move down in the panel")
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    private func button(_ symbol: String, offset: Int, enabled: Bool, help: String) -> some View {
+        Button {
+            move(offset)
+        } label: {
+            Image(systemName: symbol)
+                .frame(width: 14, height: 12)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!enabled)
+        // The explicit secondary style hides the usual disabled dimming.
+        .opacity(enabled ? 1 : Self.disabledOpacity)
+        .help(help)
+    }
+}
+
 /// What went wrong, and the command to run in Terminal instead.
 private struct LoginFailure: View {
     let error: LoginError
@@ -228,97 +321,6 @@ private struct LoginFailure: View {
             .padding(.horizontal, Spacing.sm)
             .padding(.vertical, Spacing.xs)
             .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        }
-    }
-}
-
-private struct AddSubscriptionForm: View {
-    let model: SubscriptionsModel
-    @Binding var isPresented: Bool
-
-    @State private var draft = Subscription(name: "", provider: .claude, dir: Subscription.defaultDir(for: .claude))
-
-    private static let labelWidth: CGFloat = 64
-
-    var body: some View {
-        let problem = model.problem(with: draft)
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            Text("New subscription")
-                .font(Typography.profile)
-
-            field("Provider") {
-                Picker("Provider", selection: $draft.provider) {
-                    ForEach(Agent.allCases) { agent in
-                        Text(agent.title).tag(agent)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .onChange(of: draft.provider) { old, new in
-                    // Follow the provider's default folder unless one was chosen.
-                    if draft.dir == Subscription.defaultDir(for: old) {
-                        draft.dir = Subscription.defaultDir(for: new)
-                    }
-                }
-            }
-            field("Name") {
-                TextField("Work", text: $draft.name)
-                    .textFieldStyle(.roundedBorder)
-            }
-            field("Folder") {
-                HStack(spacing: Spacing.sm) {
-                    TextField(Subscription.defaultDir(for: draft.provider), text: $draft.dir)
-                        .textFieldStyle(.roundedBorder)
-                        .font(Typography.time)
-                    Button("Choose…", action: chooseFolder)
-                }
-            }
-
-            HStack {
-                Text(problem ?? "Then press Log in on the new row to sign in.")
-                    .font(Typography.small)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { isPresented = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Add") {
-                    model.add(draft)
-                    isPresented = false
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(problem != nil)
-            }
-        }
-        .padding(Spacing.xl)
-        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
-        )
-    }
-
-    private func field(_ label: String, @ViewBuilder content: () -> some View) -> some View {
-        HStack(spacing: Spacing.md) {
-            Text(label)
-                .font(Typography.body)
-                .foregroundStyle(.secondary)
-                .frame(width: Self.labelWidth, alignment: .leading)
-            content()
-        }
-    }
-
-    /// Profile folders are usually hidden (~/.claude-work), so show hidden files.
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.showsHiddenFiles = true
-        panel.prompt = "Choose"
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
-        if panel.runModal() == .OK, let url = panel.url {
-            draft.dir = (url.path as NSString).abbreviatingWithTildeInPath
         }
     }
 }

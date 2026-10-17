@@ -78,6 +78,7 @@ def accounts_from_config(path: str) -> list[dict]:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
 
     by_slot: dict = {}
+    positions = dict.fromkeys(PROVIDERS, 0)
     for sub in doc.get("subscriptions") or []:
         name = str(sub.get("name") or "").strip()
         provider = sub.get("provider")
@@ -90,7 +91,23 @@ def accounts_from_config(path: str) -> list[dict]:
         if acct[key]:
             raise ConfigError(f'two {provider} subscriptions named "{name}" in {path}')
         acct[key] = folder
+        # Where this subscription sits among its provider's, for `provider_order`.
+        acct[f"{provider}_position"] = positions[provider]
+        positions[provider] += 1
     return list(by_slot.values())
+
+
+def provider_order(accts: list[dict]) -> dict:
+    """Each provider's account slots in the order the panel lists them: the
+    order of that provider's subscriptions in the config, which may differ
+    from provider to provider. Accounts without a position keep their place."""
+    keys = {"claude": "claude_dir", "codex": "codex_home"}
+    order = {}
+    for provider in PROVIDERS:
+        having = [(i, a) for i, a in enumerate(accts) if a.get(keys[provider])]
+        having.sort(key=lambda pair: pair[1].get(f"{provider}_position", pair[0]))
+        order[provider] = [a["slot"] for _, a in having]
+    return order
 
 
 def account_slot(name: str) -> str:
@@ -639,13 +656,14 @@ def collect(accts: list[dict], free_resets: bool = False) -> list[dict]:
     return out
 
 
-def print_json(entries: list[dict]) -> None:
+def print_json(entries: list[dict], order: dict) -> None:
     print(
         json.dumps(
             {
                 "version": JSON_SCHEMA_VERSION,
                 "generated_at": iso_utc(time.time()),
                 "accounts": entries,
+                "order": order,
             },
             ensure_ascii=False,
         )
@@ -718,7 +736,7 @@ def main() -> int:
         print(f"no accounts configured — {hint}", file=sys.stderr)
         return 1
     if args.json:
-        print_json(entries)
+        print_json(entries, provider_order(accts))
     else:
         print_table(entries)
     return 0

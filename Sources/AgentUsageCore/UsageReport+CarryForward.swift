@@ -17,7 +17,7 @@ public extension UsageReport {
                 codex: account.codex.map { Self.keep($0, else: before.codex, now: now) }
             )
         }
-        return UsageReport(version: version, generatedAt: generatedAt, accounts: merged)
+        return UsageReport(version: version, generatedAt: generatedAt, accounts: merged, order: order)
     }
 
     private static func keep(_ fresh: AgentUsage, else old: AgentUsage?, now: Date) -> AgentUsage {
