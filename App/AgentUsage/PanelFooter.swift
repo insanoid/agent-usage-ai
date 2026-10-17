@@ -7,6 +7,7 @@ struct PanelFooter: View {
     let now: Date
 
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -37,6 +38,9 @@ struct PanelFooter: View {
                     openWindow(id: SettingsView.windowID)
                     // A menu bar app is never frontmost on its own.
                     NSApp.activate()
+                    // Close the panel on the next turn: dismissing tears this
+                    // view down, and a window request still pending is dropped.
+                    DispatchQueue.main.async { dismiss() }
                 } label: {
                     Image(systemName: "gearshape")
                 }
