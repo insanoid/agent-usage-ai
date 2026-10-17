@@ -44,6 +44,8 @@ struct SettingsContent: View {
                 SectionHeader(title: "General")
                 LaunchAtLoginRow()
                 Hairline()
+                AppearanceRow()
+                Hairline()
                 ExtraUsageAlertRow()
                 Hairline()
                 FreeResetsRow(store: store)

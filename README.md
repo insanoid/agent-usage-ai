@@ -143,7 +143,7 @@ folder its login lives in:
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
-    <img src="docs/images/settings-light.png" alt="Settings: Open at login, the extra-usage alert and its colour, Quit, and the subscriptions for each provider with Log in buttons" width="560">
+    <img src="docs/images/settings-light.png" alt="Settings: Open at login, Appearance, the extra-usage alert and its colour, Quit, and the subscriptions for each provider with Log in buttons" width="560">
   </picture>
 </p>
 

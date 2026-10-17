@@ -10,6 +10,7 @@ struct AgentUsageApp: App {
 
     init() {
         LoginItem.refreshIfEnabled()
+        AppearancePreference.stored.apply()
         let store = UsageStore(
             source: ScriptUsageSource(configURL: SubscriptionsFile.standard().url),
             cached: WidgetBridge.loadCached(),
