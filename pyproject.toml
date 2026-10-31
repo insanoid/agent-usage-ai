@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-usage-ai"
+version = "0.1.0"
+description = "Claude Code and Codex subscription usage for terminals and MCP clients"
+readme = "linux/README.md"
+requires-python = ">=3.10"
+dependencies = ["mcp>=1.26,<2"]
+
+[project.scripts]
+agent-usage = "agent_usage.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.9"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["linux/agent_usage"]
+
+# Package the exact collector the Mac app uses without modifying its source.
+[tool.hatch.build.targets.wheel.force-include]
+"bin/agent-usage" = "agent_usage/_collector.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["linux", "bin/agent-usage", "pyproject.toml"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100

@@ -7,6 +7,9 @@
 A macOS menu bar app and widget that show your **Claude Code** and **Codex**
 usage limits — every subscription, side by side — and when each one resets.
 
+For a Linux terminal command and a local MCP server for Hermes, see
+[Linux and Hermes setup](linux/README.md). The Mac app remains unchanged.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark.png">

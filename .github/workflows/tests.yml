@@ -9,6 +9,28 @@ on:
   pull_request:
 
 jobs:
+  linux:
+    name: Linux CLI and MCP (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked --group dev
+      - run: uv run pytest Tests/ScriptTests Tests/LinuxTests -q
+      - run: uv run ruff check linux/agent_usage Tests/LinuxTests
+      - run: uv run ruff format --check linux/agent_usage Tests/LinuxTests
+      - run: uv build
+      - name: Check installed wheel
+        run: |
+          uv venv /tmp/agent-usage-wheel
+          uv pip install --python /tmp/agent-usage-wheel/bin/python dist/*.whl
+          /tmp/agent-usage-wheel/bin/agent-usage --help
+
   script:
     name: Script (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
