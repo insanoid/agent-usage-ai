@@ -1,0 +1,20 @@
+[Unit]
+Description=Private Agent Usage snapshot API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/agent-usage-api/current/bin/agent-usage --http --config %h/.config/agent-usage/subscriptions.json --token-file %h/.config/agent-usage/api-token --snapshot %h/.local/state/agent-usage/snapshot.json --port 9135
+Environment="PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin"
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+LogRateLimitIntervalSec=60s
+LogRateLimitBurst=20
+
+[Install]
+WantedBy=default.target

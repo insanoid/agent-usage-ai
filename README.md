@@ -10,6 +10,9 @@ usage limits — every subscription, side by side — and when each one resets.
 For a Linux terminal command and a local MCP server for Hermes, see
 [Linux and Hermes setup](linux/README.md). The Mac app remains unchanged.
 
+For a private iPhone app and Home Screen widgets, see [iPhone setup](iOS/README.md)
+and the [Tailscale API guide](linux/API.md).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/panel-dark.png">

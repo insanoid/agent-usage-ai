@@ -9,6 +9,28 @@ on:
   pull_request:
 
 jobs:
+  ios:
+    name: iOS app and widgets
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: brew install xcodegen swiftformat swiftlint
+      - name: Lint iOS sources
+        run: |
+          swiftformat iOS/App iOS/Shared iOS/UI iOS/Widget iOS/Tests iOS/Package.swift --lint
+          swiftlint lint --strict iOS/App iOS/Shared iOS/UI iOS/Widget iOS/Tests
+      - run: swift test --package-path iOS
+      - run: xcodegen generate --spec iOS/project.yml
+      - name: Build app and widget for Simulator
+        run: >-
+          xcodebuild -project iOS/AgentUsageMobile.xcodeproj
+          -scheme AgentUsageMobile -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath iOS/build CODE_SIGNING_ALLOWED=NO build
+
   linux:
     name: Linux CLI and MCP (Python ${{ matrix.python }})
     runs-on: ubuntu-latest

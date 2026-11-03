@@ -88,3 +88,9 @@ uv build
 ```
 
 To update an installed copy after pulling repository changes, run `uv tool install --force .`.
+
+## Private iPhone API
+
+The optional HTTP mode supplies cached usage to the iPhone app over Tailscale.
+See [API deployment and rollback](API.md). It runs in a separate service and does
+not replace the Hermes MCP integration.

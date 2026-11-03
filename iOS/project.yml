@@ -1,0 +1,78 @@
+name: AgentUsageMobile
+options:
+  bundleIdPrefix: dev.agentusage
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "6"
+    TARGETED_DEVICE_FAMILY: "1"
+    USAGE_BUNDLE_PREFIX: dev.agentusage
+    USAGE_APP_GROUP: group.$(USAGE_BUNDLE_PREFIX).mobile
+    USAGE_KEYCHAIN_GROUP: $(AppIdentifierPrefix)$(USAGE_BUNDLE_PREFIX).mobile.shared
+    SUPPORTS_MACCATALYST: NO
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+targets:
+  AgentUsageMobile:
+    type: application
+    platform: iOS
+    sources: [App, Shared, UI, ../Sources/AgentUsageUI/Typography.swift]
+    dependencies:
+      - target: AgentUsageMobileWidget
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Agent Usage
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UsageAppGroup: $(USAGE_APP_GROUP)
+        UsageKeychainGroup: $(USAGE_KEYCHAIN_GROUP)
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.agentusage.profile
+            CFBundleURLSchemes: [agentusage]
+    entitlements:
+      path: App/AgentUsageMobile.entitlements
+      properties:
+        com.apple.security.application-groups: [$(USAGE_APP_GROUP)]
+        keychain-access-groups: [$(USAGE_KEYCHAIN_GROUP)]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(USAGE_BUNDLE_PREFIX).mobile
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  AgentUsageMobileWidget:
+    type: app-extension
+    platform: iOS
+    sources: [Widget, Shared, UI, ../Sources/AgentUsageUI/Typography.swift]
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: AppIntents.framework
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Agent Usage
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UsageAppGroup: $(USAGE_APP_GROUP)
+        UsageKeychainGroup: $(USAGE_KEYCHAIN_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/AgentUsageMobileWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [$(USAGE_APP_GROUP)]
+        keychain-access-groups: [$(USAGE_KEYCHAIN_GROUP)]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(USAGE_BUNDLE_PREFIX).mobile.widget
+        SKIP_INSTALL: YES
+schemes:
+  AgentUsageMobile:
+    build:
+      targets:
+        AgentUsageMobile: all

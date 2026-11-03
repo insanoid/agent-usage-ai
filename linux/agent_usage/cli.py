@@ -20,6 +20,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--json", action="store_true", help="print the full usage report as JSON")
+    mode.add_argument("--http", action="store_true", help="run the private loopback HTTP API")
+    parser.add_argument("--token-file", type=Path, help="private API bearer token file (HTTP only)")
+    parser.add_argument(
+        "--snapshot", type=Path, default=Path.home() / ".local/state/agent-usage/snapshot.json"
+    )
+    parser.add_argument("--port", type=int, default=9135, help="loopback HTTP port (default: 9135)")
     mode.add_argument("--mcp", action="store_true", help="run the local MCP stdio server")
     parser.add_argument(
         "--free-resets",
@@ -30,6 +36,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     service = UsageService(args.config, free_resets=args.free_resets)
     try:
+        if args.http:
+            from agent_usage.api import serve
+
+            if args.token_file is None or not 1 <= args.port <= 65535:
+                parser.error("--http requires --token-file and a port between 1 and 65535")
+            serve(args.config, args.token_file, args.snapshot, args.port, args.free_resets)
+            return 0
         service.subscriptions()
         if args.mcp:
             from agent_usage.server import create_server
@@ -41,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(report, ensure_ascii=False))
             else:
                 _collector.print_table(report["accounts"])
-    except ConfigurationError as exc:
+    except (ConfigurationError, OSError, ValueError) as exc:
         print(f"agent-usage: {exc}", file=sys.stderr)
         return 2
     return 0
